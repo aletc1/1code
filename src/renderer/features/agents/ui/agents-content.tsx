@@ -69,6 +69,7 @@ import { SubChatsQuickSwitchDialog } from "../components/subchats-quick-switch-d
 import { isDesktopApp } from "../../../lib/utils/platform"
 import { remoteTrpc } from "../../../lib/remote-trpc"
 import { SettingsContent } from "../../settings/settings-content"
+import { UsageContent } from "../../usage/usage-content"
 // Desktop mock
 const useIsAdmin = () => false
 
@@ -863,6 +864,8 @@ export function AgentsContent() {
         {/* Mobile: Settings/Automations/Inbox fullscreen views */}
         {desktopView === "settings" ? (
           <SettingsContent />
+        ) : desktopView === "usage" ? (
+          <UsageContent />
         ) : betaAutomationsEnabled && desktopView === "automations" ? (
           <AutomationsView />
         ) : betaAutomationsEnabled && desktopView === "automations-detail" ? (
@@ -1002,6 +1005,8 @@ export function AgentsContent() {
         >
           {desktopView === "settings" ? (
             <SettingsContent />
+          ) : desktopView === "usage" ? (
+            <UsageContent />
           ) : betaAutomationsEnabled && desktopView === "automations" ? (
             <AutomationsView />
           ) : betaAutomationsEnabled && desktopView === "automations-detail" ? (
