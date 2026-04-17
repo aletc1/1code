@@ -147,6 +147,7 @@ import {
   subChatCodexThinkingAtomFamily,
   subChatModelIdAtomFamily,
   subChatModeAtomFamily,
+  subChatProviderOverridesAtom,
   suppressInputFocusAtom,
   undoStackAtom,
   workspaceDiffCacheAtomFamily,
@@ -175,6 +176,7 @@ import {
   getSubChatDraftFull
 } from "../lib/drafts"
 import { IPCChatTransport } from "../lib/ipc-chat-transport"
+import { applyModeDefaultModel } from "../lib/model-switching"
 import {
   createQueueItem, createTextPreview, generateQueueId,
   toQueuedFile,
@@ -3154,6 +3156,9 @@ const ChatViewInner = memo(function ChatViewInner({
     // Update atomFamily state (for UI) - this also syncs to store via effect
     setSubChatMode("agent")
 
+    // Autoswitch to the Agent-mode default model before sending
+    applyModeDefaultModel(subChatId, "agent")
+
     // Enable auto-scroll and immediately scroll to bottom
     shouldAutoScrollRef.current = true
     scrollToBottom()
@@ -3897,6 +3902,13 @@ const ChatViewInner = memo(function ChatViewInner({
       const builtinNames = new Set(
         BUILTIN_SLASH_COMMANDS.map((cmd) => cmd.name),
       )
+      // Autoswitch to the Review-mode default model for review-type commands.
+      // Done transiently: we set the model before the transport reads it; we
+      // don't restore, so the chat input selector remains visibly on the
+      // review model until the next mode change or manual pick.
+      if (commandName === "review" || commandName === "security-review") {
+        applyModeDefaultModel(subChatId, "review")
+      }
       if (!builtinNames.has(commandName)) {
         try {
           const commands = await trpcClient.commands.list.query({
@@ -4218,6 +4230,10 @@ const ChatViewInner = memo(function ChatViewInner({
       const builtinNames = new Set(
         BUILTIN_SLASH_COMMANDS.map((cmd) => cmd.name),
       )
+      // Autoswitch to the Review-mode default model for review-type commands.
+      if (commandName === "review" || commandName === "security-review") {
+        applyModeDefaultModel(subChatId, "review")
+      }
       if (!builtinNames.has(commandName)) {
         try {
           const commands = await trpcClient.commands.list.query({
@@ -5301,14 +5317,13 @@ export function ChatView({
       splitPaneIds: state.splitPaneIds,
     }))
   )
-  const [
-    subChatProviderOverrides,
-    setSubChatProviderOverrides,
-  ] = useState<Record<string, "claude-code" | "codex">>({})
+  const [subChatProviderOverrides, setSubChatProviderOverrides] = useAtom(
+    subChatProviderOverridesAtom,
+  )
 
   useEffect(() => {
     setSubChatProviderOverrides({})
-  }, [chatId])
+  }, [chatId, setSubChatProviderOverrides])
 
   // Clear sub-chat "unseen changes" indicator when sub-chat becomes active
   useEffect(() => {

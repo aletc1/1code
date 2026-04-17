@@ -82,6 +82,7 @@ import {
   type ClaudeThinkingLevel,
   type CodexThinkingLevel,
 } from "../lib/models"
+import { applyModeDefaultModel } from "../lib/model-switching"
 import type { DiffTextContext, SelectedTextContext } from "../lib/queue-utils"
 import {
   AgentsFileMention,
@@ -729,13 +730,16 @@ export const ChatInputArea = memo(function ChatInputArea({
   const [subChatMode, setSubChatMode] = useAtom(subChatModeAtom)
 
   // Helper to update mode (atomFamily + Zustand store sync)
+  // Also applies the mode's default model so the chat input selector reflects
+  // the switch immediately (Plan → Opus 4.7 1M, Agent → Sonnet 4.6, etc.)
   const updateMode = useCallback((newMode: AgentMode) => {
     if (onModeChange) {
       onModeChange(newMode)
-      return
+    } else {
+      setSubChatMode(newMode)
+      useAgentSubChatStore.getState().updateSubChatMode(subChatId, newMode)
     }
-    setSubChatMode(newMode)
-    useAgentSubChatStore.getState().updateSubChatMode(subChatId, newMode)
+    applyModeDefaultModel(subChatId, newMode)
   }, [onModeChange, setSubChatMode, subChatId])
 
   // Toggle mode helper

@@ -45,6 +45,10 @@ import {
   getNextMode,
   type AgentMode,
 } from "../atoms"
+import {
+  getDefaultModelForMode,
+  getProviderForModelId,
+} from "../lib/model-switching"
 import { defaultAgentModeAtom } from "../../../lib/atoms"
 import { ProjectSelector } from "../components/project-selector"
 import { WorkModeSelector } from "../components/work-mode-selector"
@@ -332,10 +336,16 @@ export function NewChatForm({
     lastSelectedClaudeThinkingAtom,
   )
 
-  const [selectedModel, setSelectedModel] = useState(
-    () =>
-      availableModels.models.find((m) => m.id === lastSelectedModelId) || availableModels.models[0],
-  )
+  const [selectedModel, setSelectedModel] = useState(() => {
+    // Initial model comes from the mode's default (Plan or Agent preference in Settings).
+    // Falls back to the legacy lastSelectedModelId, then to the first available model.
+    const modeDefaultId = getDefaultModelForMode(agentMode)
+    return (
+      availableModels.models.find((m) => m.id === modeDefaultId) ||
+      availableModels.models.find((m) => m.id === lastSelectedModelId) ||
+      availableModels.models[0]
+    )
+  })
 
   // Sync selectedModel when atom value changes (e.g., after localStorage hydration)
   useEffect(() => {
@@ -344,6 +354,40 @@ export function NewChatForm({
       setSelectedModel(model)
     }
   }, [lastSelectedModelId])
+
+  // When the mode changes (e.g. user toggles Plan ↔ Agent in the form, or the
+  // Settings default changes before first render), switch the selected model
+  // to that mode's default. Works for both Claude and Codex defaults — the
+  // active agent is swapped accordingly so the right transport is used.
+  useEffect(() => {
+    const modeDefaultId = getDefaultModelForMode(agentMode)
+    const provider = getProviderForModelId(modeDefaultId)
+    if (provider === "codex") {
+      const codexAgent =
+        enabledAgents.find((agent) => agent.id === "codex") || fallbackAgent
+      if (codexAgent.id !== selectedAgent.id) {
+        setSelectedAgent(codexAgent)
+      }
+      if (lastSelectedCodexModelId !== modeDefaultId) {
+        setLastSelectedCodexModelId(modeDefaultId)
+      }
+      return
+    }
+    // Claude default
+    if (selectedAgent.id !== "claude-code") {
+      const next =
+        enabledAgents.find((agent) => agent.id === "claude-code") ||
+        fallbackAgent
+      setSelectedAgent(next)
+    }
+    const model = availableModels.models.find((m) => m.id === modeDefaultId)
+    if (model && model.id !== selectedModel.id) {
+      setSelectedModel(model)
+    }
+    // Only fire on mode change — manual picks via setSelectedModel should not
+    // be overridden by this effect re-running.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [agentMode])
 
   const storedCodexApiKey = useAtomValue(codexApiKeyAtom)
   const hasAppCodexApiKey = Boolean(normalizeCodexApiKey(storedCodexApiKey))
@@ -1144,6 +1188,7 @@ export function NewChatForm({
     // Check if message is a slash command with arguments (e.g. "/hello world")
     // Note: 's' flag makes '.' match newlines, so multi-line arguments are captured
     const slashMatch = message.match(/^\/(\S+)\s*(.*)$/s)
+    let reviewModelOverride: string | null = null
     if (slashMatch) {
       const [, commandName, args] = slashMatch
 
@@ -1151,6 +1196,11 @@ export function NewChatForm({
       const builtinNames = new Set(
         BUILTIN_SLASH_COMMANDS.map((cmd) => cmd.name),
       )
+      // Review-type commands should create the new chat on the Review-mode
+      // default model instead of the agent/plan default.
+      if (commandName === "review" || commandName === "security-review") {
+        reviewModelOverride = getDefaultModelForMode("review")
+      }
       if (!builtinNames.has(commandName)) {
         // This is a custom command - load content and replace $ARGUMENTS
         try {
@@ -1240,7 +1290,7 @@ export function NewChatForm({
     createChatMutation.mutate({
       projectId: selectedProject.id,
       name: message.trim().slice(0, 50), // Use first 50 chars as chat name
-      model: selectedChatModel,
+      model: reviewModelOverride ?? selectedChatModel,
       initialMessageParts: parts.length > 0 ? parts : undefined,
       baseBranch:
         workMode === "worktree" ? selectedBranch || undefined : undefined,

@@ -218,6 +218,41 @@ export const lastSelectedModelIdAtom = atomWithStorage<string>(
   { getOnInit: true },
 )
 
+// Available Claude model IDs (kept in sync with CLAUDE_MODELS in lib/models.ts)
+const AVAILABLE_CLAUDE_MODEL_IDS = [
+  "opus",
+  "opus[1m]",
+  "sonnet",
+  "haiku",
+] as const
+
+function sanitizeModelId(candidate: string, fallback: string): string {
+  return (AVAILABLE_CLAUDE_MODEL_IDS as readonly string[]).includes(candidate)
+    ? candidate
+    : fallback
+}
+
+export const defaultPlanModeModelAtom = atomWithStorage<string>(
+  "preferences:default-plan-mode-model",
+  sanitizeModelId("opus[1m]", "opus"),
+  undefined,
+  { getOnInit: true },
+)
+
+export const defaultAgentModeModelAtom = atomWithStorage<string>(
+  "preferences:default-agent-mode-model",
+  sanitizeModelId("sonnet", "opus"),
+  undefined,
+  { getOnInit: true },
+)
+
+export const defaultReviewModeModelAtom = atomWithStorage<string>(
+  "preferences:default-review-mode-model",
+  sanitizeModelId("opus", "opus"),
+  undefined,
+  { getOnInit: true },
+)
+
 export const lastSelectedCodexModelIdAtom = atomWithStorage<string>(
   "agents:lastSelectedCodexModelId",
   "gpt-5.3-codex",
@@ -409,6 +444,37 @@ export const MODEL_ID_MAP: Record<string, string> = {
   sonnet: "sonnet",
   haiku: "haiku",
 }
+
+// Per-subChat provider override (Claude vs Codex). Runtime-only (not
+// persisted); cleared when the active chat changes. Replaces the previous
+// local React state so the model-switching helper can write to it from
+// non-React contexts (e.g. autoswitch on plan approval or /review).
+export const subChatProviderOverridesAtom = atom<
+  Record<string, "claude-code" | "codex">
+>({})
+
+export const subChatProviderOverrideAtomFamily = atomFamily(
+  (subChatId: string) =>
+    atom(
+      (get) =>
+        get(subChatProviderOverridesAtom)[subChatId] as
+          | "claude-code"
+          | "codex"
+          | undefined,
+      (get, set, next: "claude-code" | "codex" | null) => {
+        const current = get(subChatProviderOverridesAtom)
+        const prev = current[subChatId] ?? null
+        if (prev === next) return
+        const updated = { ...current }
+        if (next === null) {
+          delete updated[subChatId]
+        } else {
+          updated[subChatId] = next
+        }
+        set(subChatProviderOverridesAtom, updated)
+      },
+    ),
+)
 
 // Sidebar state - window-scoped so each window has independent sidebar visibility
 export const agentsSidebarOpenAtom = atomWithWindowStorage<boolean>(
