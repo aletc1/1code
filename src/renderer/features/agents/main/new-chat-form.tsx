@@ -136,7 +136,7 @@ function useAvailableModels() {
 
   const baseModels = CLAUDE_MODELS
 
-  const isOffline = ollamaStatus ? !ollamaStatus.internet.online : false
+  const isOffline = ollamaStatus ? !(ollamaStatus.internet?.online ?? true) : false
   const hasOllama = ollamaStatus?.ollama.available && (ollamaStatus.ollama.models?.length ?? 0) > 0
   const ollamaModels = ollamaStatus?.ollama.models || []
   const recommendedModel = ollamaStatus?.ollama.recommendedModel
