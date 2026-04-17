@@ -1699,6 +1699,10 @@ export function NewChatForm({
               onClick={onBackToChats}
               className="h-7 w-7 p-0 hover:bg-foreground/10 transition-[background-color,transform] duration-150 ease-out active:scale-[0.97] flex-shrink-0 rounded-md"
               aria-label="All projects"
+              style={{
+                // @ts-expect-error - WebKit-specific property
+                WebkitAppRegion: "no-drag",
+              }}
             >
               <AlignJustify className="h-4 w-4" />
             </Button>

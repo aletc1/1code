@@ -335,7 +335,17 @@ export function AgentsLayout() {
         </ResizableSidebar>
 
           {/* Main Content */}
-          <div className="flex-1 overflow-hidden flex flex-col min-w-0">
+          <div className="relative flex-1 overflow-hidden flex flex-col min-w-0">
+            {/* Draggable strip for window movement (hidden in fullscreen, handled by WindowsTitleBar on Windows) */}
+            {isDesktop && !isFullscreen && (
+              <div
+                className="absolute inset-x-0 top-0 h-[32px] z-0"
+                style={{
+                  // @ts-expect-error - WebKit-specific property
+                  WebkitAppRegion: "drag",
+                }}
+              />
+            )}
             <AgentsContent />
           </div>
         </div>
