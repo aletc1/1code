@@ -1,11 +1,12 @@
-import { useAtom } from "jotai"
-import { useEffect, useState } from "react"
+import { useAtom, useAtomValue } from "jotai"
+import { useEffect, useMemo, useState } from "react"
 import {
   analyticsOptOutAtom,
   autoAdvanceTargetAtom,
   ctrlTabTargetAtom,
   defaultAgentModeAtom,
   desktopNotificationsEnabledAtom,
+  hiddenModelsAtom,
   notifyWhenFocusedAtom,
   soundNotificationsEnabledAtom,
   preferredEditorAtom,
@@ -13,8 +14,15 @@ import {
   type AutoAdvanceTarget,
   type CtrlTabTarget,
 } from "../../../lib/atoms"
-import { lastSelectedClaudeThinkingAtom } from "../../../features/agents/atoms"
 import {
+  defaultAgentModeModelAtom,
+  defaultPlanModeModelAtom,
+  defaultReviewModeModelAtom,
+  lastSelectedClaudeThinkingAtom,
+} from "../../../features/agents/atoms"
+import {
+  CLAUDE_MODELS,
+  CODEX_MODELS,
   formatClaudeThinkingLabel,
   type ClaudeThinkingLevel,
 } from "../../../features/agents/lib/models"
@@ -145,6 +153,31 @@ function useIsNarrowScreen(): boolean {
   return isNarrow
 }
 
+type ModelOption = {
+  id: string
+  label: string
+  provider: "claude-code" | "codex"
+}
+
+function buildModelOptions(hiddenModels: string[]): ModelOption[] {
+  const hidden = new Set(hiddenModels)
+  const claude = CLAUDE_MODELS.filter((m) => !hidden.has(m.id)).map((m) => ({
+    id: m.id,
+    label: `${m.name} ${m.version}`,
+    provider: "claude-code" as const,
+  }))
+  const codex = CODEX_MODELS.filter((m) => !hidden.has(m.id)).map((m) => ({
+    id: m.id,
+    label: m.name,
+    provider: "codex" as const,
+  }))
+  return [...claude, ...codex]
+}
+
+function formatModelLabel(modelId: string, options: ModelOption[]): string {
+  return options.find((m) => m.id === modelId)?.label ?? modelId
+}
+
 export function AgentsPreferencesTab() {
   const [claudeThinking, setClaudeThinking] = useAtom(
     lastSelectedClaudeThinkingAtom,
@@ -156,6 +189,18 @@ export function AgentsPreferencesTab() {
   const [ctrlTabTarget, setCtrlTabTarget] = useAtom(ctrlTabTargetAtom)
   const [autoAdvanceTarget, setAutoAdvanceTarget] = useAtom(autoAdvanceTargetAtom)
   const [defaultAgentMode, setDefaultAgentMode] = useAtom(defaultAgentModeAtom)
+  const [defaultPlanModel, setDefaultPlanModel] = useAtom(defaultPlanModeModelAtom)
+  const [defaultAgentModel, setDefaultAgentModel] = useAtom(
+    defaultAgentModeModelAtom,
+  )
+  const [defaultReviewModel, setDefaultReviewModel] = useAtom(
+    defaultReviewModeModelAtom,
+  )
+  const hiddenModels = useAtomValue(hiddenModelsAtom)
+  const modelOptions = useMemo(
+    () => buildModelOptions(hiddenModels),
+    [hiddenModels],
+  )
   const [preferredEditor, setPreferredEditor] = useAtom(preferredEditorAtom)
   const isNarrowScreen = useIsNarrowScreen()
 
@@ -251,6 +296,88 @@ export function AgentsPreferencesTab() {
             <SelectContent>
               <SelectItem value="agent">Agent</SelectItem>
               <SelectItem value="plan">Plan</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+        <div className="flex items-center justify-between p-4 border-t border-border">
+          <div className="flex flex-col space-y-1">
+            <span className="text-sm font-medium text-foreground">
+              Default Plan Mode Model
+            </span>
+            <span className="text-xs text-muted-foreground">
+              Model used when a chat starts or switches to Plan mode
+            </span>
+          </div>
+          <Select
+            value={defaultPlanModel}
+            onValueChange={(value: string) => setDefaultPlanModel(value)}
+          >
+            <SelectTrigger className="w-auto px-2">
+              <span className="text-xs">
+                {formatModelLabel(defaultPlanModel, modelOptions)}
+              </span>
+            </SelectTrigger>
+            <SelectContent>
+              {modelOptions.map((model) => (
+                <SelectItem key={model.id} value={model.id}>
+                  {model.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+        <div className="flex items-center justify-between p-4 border-t border-border">
+          <div className="flex flex-col space-y-1">
+            <span className="text-sm font-medium text-foreground">
+              Default Agent Mode Model
+            </span>
+            <span className="text-xs text-muted-foreground">
+              Model used when a chat starts or switches to Agent mode (e.g. after
+              approving a plan)
+            </span>
+          </div>
+          <Select
+            value={defaultAgentModel}
+            onValueChange={(value: string) => setDefaultAgentModel(value)}
+          >
+            <SelectTrigger className="w-auto px-2">
+              <span className="text-xs">
+                {formatModelLabel(defaultAgentModel, modelOptions)}
+              </span>
+            </SelectTrigger>
+            <SelectContent>
+              {modelOptions.map((model) => (
+                <SelectItem key={model.id} value={model.id}>
+                  {model.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+        <div className="flex items-center justify-between p-4 border-t border-border">
+          <div className="flex flex-col space-y-1">
+            <span className="text-sm font-medium text-foreground">
+              Default Review Mode Model
+            </span>
+            <span className="text-xs text-muted-foreground">
+              Model used when running /review or /security-review
+            </span>
+          </div>
+          <Select
+            value={defaultReviewModel}
+            onValueChange={(value: string) => setDefaultReviewModel(value)}
+          >
+            <SelectTrigger className="w-auto px-2">
+              <span className="text-xs">
+                {formatModelLabel(defaultReviewModel, modelOptions)}
+              </span>
+            </SelectTrigger>
+            <SelectContent>
+              {modelOptions.map((model) => (
+                <SelectItem key={model.id} value={model.id}>
+                  {model.label}
+                </SelectItem>
+              ))}
             </SelectContent>
           </Select>
         </div>
