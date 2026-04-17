@@ -94,16 +94,9 @@ const ERROR_TOAST_CONFIG: Record<
       "Your previous chat session expired. Send your message again to start fresh.",
   },
   EXECUTABLE_NOT_FOUND: {
-    title: "Claude CLI not found",
+    title: "Claude binary missing",
     description:
-      "Install Claude Code CLI: npm install -g @anthropic-ai/claude-code",
-    action: {
-      label: "Copy command",
-      onClick: () =>
-        navigator.clipboard.writeText(
-          "npm install -g @anthropic-ai/claude-code",
-        ),
-    },
+      "The bundled Claude binary could not be found. Reinstalling 1Code should restore it.",
   },
   NETWORK_ERROR: {
     title: "Network error",
