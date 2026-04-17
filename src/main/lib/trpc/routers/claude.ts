@@ -1772,7 +1772,7 @@ ${prompt}
                 includePartialMessages: true,
                 // Load skills from project and user directories (skip for Ollama - not supported)
                 ...(!isUsingOllama && {
-                  settingSources: ["project" as const, "user" as const],
+                  settingSources: ["project" as const, "local" as const, "user" as const],
                 }),
                 canUseTool: async (
                   toolName: string,
@@ -1979,23 +1979,20 @@ ${prompt}
                 pathToClaudeCodeExecutable: claudeBinaryPath,
                 // Session handling: For Ollama, use resume with session ID to maintain history
                 // For Claude API, use resume with rollback/fork support
-                ...(resumeSessionId && {
-                  resume: resumeSessionId,
-                  // Fork support - resume at specific point and create new session
-                  ...(shouldForkResume && forkResumeAtUuid && !isUsingOllama
-                    ? {
-                        resumeSessionAt: forkResumeAtUuid,
-                        forkSession: true,
-                      }
-                    : // Rollback support - resume at specific message UUID (from DB)
-                      resumeAtUuid && !isUsingOllama
-                      ? { resumeSessionAt: resumeAtUuid }
-                      : { continue: true }),
-                }),
-                // For first message in chat (no session ID yet), use continue mode
-                ...(!resumeSessionId && { continue: true }),
+                // resume is mutually exclusive with continue (SDK contract)
+                ...(resumeSessionId
+                  ? {
+                      resume: resumeSessionId,
+                      // Fork support - resume at specific point and create new session
+                      ...(shouldForkResume && forkResumeAtUuid && !isUsingOllama
+                        ? { resumeSessionAt: forkResumeAtUuid, forkSession: true }
+                        : // Rollback support - resume at specific message UUID (from DB)
+                          resumeAtUuid && !isUsingOllama
+                          ? { resumeSessionAt: resumeAtUuid }
+                          : {}),
+                    }
+                  : { continue: true }),
                 ...(resolvedModel && { model: resolvedModel }),
-                // fallbackModel: "claude-opus-4-5-20251101",
                 ...(input.effort && { effort: input.effort }),
               },
             }
