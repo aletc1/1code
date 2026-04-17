@@ -621,8 +621,7 @@ if (gotTheLock) {
 
     // Function to build and set application menu
     const buildMenu = () => {
-      // Show devtools menu item only in dev mode or when unlocked
-      const showDevTools = !app.isPackaged || devToolsUnlocked
+      const showDevTools = true
       const template: Electron.MenuItemConstructorOptions[] = [
         {
           label: app.name,

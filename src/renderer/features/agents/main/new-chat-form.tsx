@@ -137,10 +137,10 @@ function useAvailableModels() {
 
   const baseModels = CLAUDE_MODELS
 
-  const isOffline = ollamaStatus ? !ollamaStatus.internet.online : false
-  const hasOllama = ollamaStatus?.ollama.available && (ollamaStatus.ollama.models?.length ?? 0) > 0
-  const ollamaModels = ollamaStatus?.ollama.models || []
-  const recommendedModel = ollamaStatus?.ollama.recommendedModel
+  const isOffline = ollamaStatus ? !(ollamaStatus.internet?.online ?? true) : false
+  const hasOllama = ollamaStatus?.ollama?.available && (ollamaStatus.ollama?.models?.length ?? 0) > 0
+  const ollamaModels = ollamaStatus?.ollama?.models || []
+  const recommendedModel = ollamaStatus?.ollama?.recommendedModel
 
   // Only show offline models if:
   // 1. Debug flag is enabled (showOfflineFeatures)
@@ -1415,7 +1415,7 @@ export function NewChatForm({
       }
 
       // For all other commands (builtin prompts and custom):
-      // insert the command and let user add arguments or press Enter to send
+      // insert the command and let user add arguments or press Shift+Enter to send
       editorRef.current?.setValue(`/${command.name} `)
     },
     [agentMode],

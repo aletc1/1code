@@ -118,10 +118,10 @@ function useAvailableModels() {
 
   const baseModels = CLAUDE_MODELS
 
-  const isOffline = ollamaStatus ? !ollamaStatus.internet.online : false
-  const hasOllama = ollamaStatus?.ollama.available && (ollamaStatus.ollama.models?.length ?? 0) > 0
-  const ollamaModels = ollamaStatus?.ollama.models || []
-  const recommendedModel = ollamaStatus?.ollama.recommendedModel
+  const isOffline = ollamaStatus ? !(ollamaStatus.internet?.online ?? true) : false
+  const hasOllama = ollamaStatus?.ollama?.available && (ollamaStatus.ollama?.models?.length ?? 0) > 0
+  const ollamaModels = ollamaStatus?.ollama?.models || []
+  const recommendedModel = ollamaStatus?.ollama?.recommendedModel
 
   // Only show offline models if:
   // 1. Debug flag is enabled (showOfflineFeatures)
@@ -153,7 +153,7 @@ export interface ChatInputAreaProps {
   fileInputRef: React.RefObject<HTMLInputElement | null>
   // Core callbacks
   onSend: () => void
-  onForceSend: () => void // Opt+Enter: stop stream and send immediately, bypassing queue
+  onForceSend: () => void // Opt+Shift+Enter: stop stream and send immediately, bypassing queue
   onStop: () => Promise<void>
   onCompact: () => void
   onCreateNewSubChat?: () => void
@@ -1115,7 +1115,7 @@ export const ChatInputArea = memo(function ChatInputArea({
       }
 
       // For all other commands (builtin prompts and custom):
-      // insert the command and let user add arguments or press Enter to send
+      // insert the command and let user add arguments or press Shift+Enter to send
       editorRef.current?.setValue(`/${command.name} `)
     },
     [subChatMode, updateMode, onCreateNewSubChat, onCompact, editorRef],
@@ -1287,7 +1287,7 @@ export const ChatInputArea = memo(function ChatInputArea({
       }}
       className="px-2 pb-2 shadow-sm shadow-background relative z-10"
     >
-      <div className="w-full max-w-2xl mx-auto">
+      <div className="w-full max-w-4xl mx-auto">
         <div
           className="relative w-full"
           onDragOver={handleDragOver}
