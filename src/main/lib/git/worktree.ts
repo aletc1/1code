@@ -241,6 +241,11 @@ export async function removeWorktree(
 	mainRepoPath: string,
 	worktreePath: string,
 ): Promise<{ success: boolean; error?: string }> {
+	// Forensic log: every worktree deletion is recorded so unexpected losses can be traced.
+	// Includes a short stack snippet to identify the calling code path.
+	const callerStack = new Error().stack?.split("\n").slice(2, 6).join(" | ") ?? "unknown";
+	console.log(`[Worktree] removeWorktree called: path=${worktreePath} mainRepo=${mainRepoPath} caller=${callerStack}`);
+
 	let gitError: string | undefined;
 	try {
 		const env = await getGitEnv();
