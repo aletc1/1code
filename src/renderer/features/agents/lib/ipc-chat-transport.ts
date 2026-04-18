@@ -486,16 +486,20 @@ export class IPCChatTransport implements ChatTransport<UIMessage> {
         )
 
         // Handle abort
-        options.abortSignal?.addEventListener("abort", () => {
-          console.log(`[SD] R:ABORT sub=${subId} n=${chunkCount} last=${lastChunkType}`)
-          sub.unsubscribe()
-          // trpcClient.claude.cancel.mutate({ subChatId: this.config.subChatId })
-          try {
-            controller.close()
-          } catch {
-            // Already closed
-          }
-        })
+        options.abortSignal?.addEventListener(
+          "abort",
+          () => {
+            console.log(`[SD] R:ABORT sub=${subId} n=${chunkCount} last=${lastChunkType}`)
+            sub.unsubscribe()
+            // trpcClient.claude.cancel.mutate({ subChatId: this.config.subChatId })
+            try {
+              controller.close()
+            } catch {
+              // Already closed
+            }
+          },
+          { once: true },
+        )
       },
     })
   }

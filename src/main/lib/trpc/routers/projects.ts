@@ -1,7 +1,7 @@
 import { z } from "zod"
 import { router, publicProcedure } from "../index"
-import { getDatabase, projects } from "../../db"
-import { eq, desc } from "drizzle-orm"
+import { getDatabase, projects, chats, subChats } from "../../db"
+import { eq, desc, inArray } from "drizzle-orm"
 import { dialog, BrowserWindow, app } from "electron"
 import { basename, join } from "path"
 import { exec } from "node:child_process"
@@ -12,6 +12,7 @@ import { extname } from "node:path"
 import { getGitRemoteInfo } from "../../git"
 import { trackProjectOpened } from "../../analytics"
 import { getLaunchDirectory } from "../../cli"
+import { abortClaudeSessionsForSubChats } from "./claude"
 
 const execAsync = promisify(exec)
 
@@ -192,6 +193,27 @@ export const projectsRouter = router({
     .input(z.object({ id: z.string() }))
     .mutation(({ input }) => {
       const db = getDatabase()
+
+      const chatIds = db
+        .select({ id: chats.id })
+        .from(chats)
+        .where(eq(chats.projectId, input.id))
+        .all()
+        .map((row) => row.id)
+
+      if (chatIds.length > 0) {
+        const subChatIds = db
+          .select({ id: subChats.id })
+          .from(subChats)
+          .where(inArray(subChats.chatId, chatIds))
+          .all()
+          .map((row) => row.id)
+
+        if (subChatIds.length > 0) {
+          abortClaudeSessionsForSubChats(subChatIds)
+        }
+      }
+
       return db
         .delete(projects)
         .where(eq(projects.id, input.id))

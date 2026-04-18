@@ -276,6 +276,18 @@ export function abortAllClaudeSessions(): void {
   activeSessions.clear()
 }
 
+/** Abort Claude sessions for a specific set of sub-chat ids */
+export function abortClaudeSessionsForSubChats(subChatIds: string[]): void {
+  for (const subChatId of subChatIds) {
+    const controller = activeSessions.get(subChatId)
+    if (controller) {
+      console.log(`[claude] Aborting session ${subChatId} (workspace removed)`)
+      controller.abort()
+      activeSessions.delete(subChatId)
+    }
+  }
+}
+
 // In-memory cache of working MCP server names (resets on app restart)
 // Key: "scope::serverName" where scope is "__global__" or projectPath
 // Value: true if working (has tools), false if failed
