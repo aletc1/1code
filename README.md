@@ -1,3 +1,5 @@
+> **⚠️ Fork Notice:** This is a personal fork of [21st-dev/1code](https://github.com/21st-dev/1code) maintained by [@aletc1](https://github.com/aletc1). It includes additional features and fixes not yet merged upstream. For the official release, visit the [original repository](https://github.com/21st-dev/1code).
+
 # 1Code
 
 [1Code.dev](https://1code.dev)
@@ -5,6 +7,20 @@
 Open-source coding agent client. Run Claude Code, Codex, and more - locally or in the cloud.
 
 By [21st.dev](https://21st.dev) team
+
+## Fork Additions
+
+Enhancements added in this fork on top of upstream:
+
+- **Per-Mode Thinking Effort** - Set Claude's thinking budget independently for Plan and Agent modes
+- **Usage Statistics** - Built-in page showing Claude + Codex token and cost tracking
+- **Per-Mode Default Models** - Configure default model per mode with automatic switching on mode change
+- **Latest Claude Models** - Opus 4.7 and updated model list including latest Claude releases
+- **Wider Chat Column** - Expanded chat area (max-w-4xl) for better readability
+- **Windows Git Path Fix** - POSIX-normalized git paths so the sidebar tree view works on Windows
+- **Enter / Shift+Enter Swap** - Enter submits, Shift+Enter inserts a newline (matches common conventions)
+
+---
 
 ## Highlights
 
