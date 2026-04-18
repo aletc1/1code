@@ -24,6 +24,13 @@ const STRIPPED_ENV_KEYS_BASE = [
   "OPENAI_API_KEY",
   "CLAUDE_CODE_USE_BEDROCK",
   "CLAUDE_CODE_USE_VERTEX",
+  // Prevent "Claude Code cannot be launched inside another session" when the
+  // dev build is spawned from a `claude` CLI terminal — the CLI sets these
+  // markers on its environment and they propagate into Electron's process.env.
+  // We unconditionally strip them here and then re-set CLAUDE_CODE_ENTRYPOINT
+  // to our own value below (order matters: strip → set).
+  "CLAUDE_CODE_ENTRYPOINT",
+  "CLAUDECODE",
 ]
 
 // In dev mode, also strip ANTHROPIC_API_KEY so OAuth token is used instead
