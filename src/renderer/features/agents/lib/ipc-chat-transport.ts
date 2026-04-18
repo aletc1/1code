@@ -26,6 +26,7 @@ import {
   subChatClaudeThinkingAtomFamily,
   subChatModelIdAtomFamily,
 } from "../atoms"
+import { setSubChatModel } from "./model-switching"
 import { useAgentSubChatStore } from "../stores/sub-chat-store"
 import type { AgentMessageMetadata } from "../ui/agent-message-usage"
 
@@ -424,16 +425,43 @@ export class IPCChatTransport implements ChatTransport<UIMessage> {
                   ? rawDescription.slice(0, 300) + "..."
                   : rawDescription
 
+                // Surface a clearer fallback action when a 1M-context model
+                // hits a rate-limit / context error. Lets the user recover
+                // with one click instead of digging through model settings.
+                const erroredModel: string | undefined = chunk.debugInfo?.model
+                const is1MModel =
+                  typeof erroredModel === "string" && erroredModel.endsWith("[1m]")
+                const isRateOrContextError =
+                  category === "RATE_LIMIT" || category === "RATE_LIMIT_SDK"
+                const subChatId = this.config.subChatId
+                const offerFallback =
+                  is1MModel && isRateOrContextError && Boolean(subChatId)
+                const fallbackModelId = erroredModel?.replace(/\[1m\]$/, "")
+
+                const action = offerFallback && fallbackModelId
+                  ? {
+                      label: `Switch to ${fallbackModelId}`,
+                      onClick: () => {
+                        setSubChatModel(subChatId, fallbackModelId)
+                        toast.success(`Switched to ${fallbackModelId}`)
+                      },
+                    }
+                  : {
+                      label: "Copy Error",
+                      onClick: () => {
+                        navigator.clipboard.writeText(errorDetails)
+                        toast.success("Error details copied to clipboard")
+                      },
+                    }
+
+                const finalDescription = offerFallback
+                  ? `${description} 1M-context models share a tighter quota — try the standard 200K model.`
+                  : description
+
                 toast.error(title, {
-                  description,
+                  description: finalDescription,
                   duration: 12000,
-                  action: {
-                    label: "Copy Error",
-                    onClick: () => {
-                      navigator.clipboard.writeText(errorDetails)
-                      toast.success("Error details copied to clipboard")
-                    },
-                  },
+                  action,
                 })
               }
 
