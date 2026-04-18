@@ -192,10 +192,19 @@ function handleDeepLink(url: string): void {
   try {
     const parsed = new URL(url)
 
-    // Handle auth callback: twentyfirst-agents://auth?code=xxx
+    // Handle auth callback: twentyfirst-agents://auth?code=xxx&state=yyy
     if (parsed.pathname === "/auth" || parsed.host === "auth") {
       const code = parsed.searchParams.get("code")
+      const state = parsed.searchParams.get("state")
       if (code) {
+        const verified =
+          authManager.verifyAndConsumeAuthState(state)
+        if (!verified) {
+          console.warn(
+            "[DeepLink] Rejected /auth code: no in-flight auth flow or state mismatch",
+          )
+          return
+        }
         handleAuthCode(code)
         return
       }
@@ -1024,7 +1033,27 @@ if (gotTheLock) {
   app.on("before-quit", async () => {
     console.log("[App] Shutting down...")
     cancelAllPendingOAuth()
-    await cleanupGitWatchers()
+
+    // Bound the watcher cleanup so a hung chokidar instance can't block quit.
+    // 1500ms is enough for well-behaved close handlers; OS will reclaim handles
+    // if we have to move on without them.
+    const WATCHER_CLEANUP_TIMEOUT_MS = 1500
+    try {
+      await Promise.race([
+        cleanupGitWatchers(),
+        new Promise<void>((resolve) =>
+          setTimeout(() => {
+            console.warn(
+              "[App] cleanupGitWatchers() exceeded timeout; continuing shutdown",
+            )
+            resolve()
+          }, WATCHER_CLEANUP_TIMEOUT_MS),
+        ),
+      ])
+    } catch (err) {
+      console.warn("[App] cleanupGitWatchers() threw during shutdown:", err)
+    }
+
     await shutdownAnalytics()
 
     // Auto-delete sub-chats that were never named and never used (messages = "[]").

@@ -53,6 +53,7 @@ export const chats = sqliteTable("chats", {
   prNumber: integer("pr_number"),
 }, (table) => [
   index("chats_worktree_path_idx").on(table.worktreePath),
+  index("chats_project_id_idx").on(table.projectId),
 ])
 
 export const chatsRelations = relations(chats, ({ one, many }) => ({
@@ -86,7 +87,10 @@ export const subChats = sqliteTable("sub_chats", {
   updatedAt: integer("updated_at", { mode: "timestamp" }).$defaultFn(
     () => new Date(),
   ),
-})
+}, (table) => [
+  index("sub_chats_chat_id_idx").on(table.chatId),
+  index("sub_chats_stream_id_idx").on(table.streamId),
+])
 
 export const subChatsRelations = relations(subChats, ({ one }) => ({
   chat: one(chats, {
