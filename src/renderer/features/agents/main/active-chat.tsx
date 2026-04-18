@@ -6187,7 +6187,7 @@ Make sure to preserve all functionality from both branches when resolving confli
     onRefresh: handleCommitChangesRefresh,
   })
 
-  const { push: pushBranch, isPending: isPushing } = usePushAction({
+  const { push: pushBranch, isPending: isPushing, dialog: pushDialog } = usePushAction({
     worktreePath,
     hasUpstream: gitStatus?.hasUpstream ?? true,
     onSuccess: handleCommitChangesRefresh,
@@ -7450,6 +7450,7 @@ Make sure to preserve all functionality from both branches when resolving confli
   return (
     <FileOpenProvider onOpenFile={setFileViewerPath}>
     <TextSelectionProvider>
+    {pushDialog}
     {/* File Search Dialog (Cmd+P) */}
     {worktreePath && (
       <FileSearchDialog

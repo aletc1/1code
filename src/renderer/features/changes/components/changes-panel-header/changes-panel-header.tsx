@@ -44,6 +44,8 @@ export function ChangesPanelHeader({
 	const [displayTime, setDisplayTime] = useState<string>("");
 	const timeoutRef = useRef<NodeJS.Timeout | null>(null);
 
+	const utils = trpc.useUtils();
+
 	const { data: branchData, refetch: refetchBranches } = trpc.changes.getBranches.useQuery(
 		{ worktreePath },
 		{ enabled: !!worktreePath },
@@ -59,6 +61,8 @@ export function ChangesPanelHeader({
 	const checkoutMutation = trpc.changes.checkout.useMutation({
 		onSuccess: () => {
 			refetchBranches();
+			utils.changes.getGitHubStatus.invalidate({ worktreePath });
+			utils.chats.getPrStatus.invalidate();
 		},
 	});
 
