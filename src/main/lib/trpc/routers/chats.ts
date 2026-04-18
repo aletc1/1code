@@ -635,10 +635,17 @@ export const chatsRouter = router({
     }),
 
   /**
-   * Delete a chat permanently (with worktree cleanup)
+   * Delete a chat permanently. Worktree directory is preserved by default;
+   * callers must pass `deleteWorktree: true` to remove it. This matches the
+   * archive flow and ensures worktrees are never deleted without explicit opt-in.
    */
   delete: publicProcedure
-    .input(z.object({ id: z.string() }))
+    .input(
+      z.object({
+        id: z.string(),
+        deleteWorktree: z.boolean().default(false),
+      }),
+    )
     .mutation(async ({ input }) => {
       const db = getDatabase()
 
@@ -656,8 +663,8 @@ export const chatsRouter = router({
         abortClaudeSessionsForSubChats(subChatIds)
       }
 
-      // Cleanup worktree if it was created (has branch = was a real worktree, not just project path)
-      if (chat?.worktreePath && chat?.branch) {
+      // Only delete worktree if the caller explicitly opted in.
+      if (input.deleteWorktree && chat?.worktreePath && chat?.branch) {
         const project = db
           .select()
           .from(projects)

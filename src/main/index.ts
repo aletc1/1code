@@ -948,13 +948,10 @@ if (gotTheLock) {
       console.error("[App] Failed to initialize database:", error)
     }
 
-    // Scan for orphan worktree directories in the background (non-blocking).
-    // Runs after a short delay so it doesn't compete with main-window paint.
-    setTimeout(() => {
-      import("./lib/git/worktree-cleanup")
-        .then(({ scanWorktreeOrphans }) => scanWorktreeOrphans())
-        .catch((err) => console.warn("[App] Worktree orphan scan failed to start:", err))
-    }, 5_000)
+    // Worktree orphan cleanup is intentionally NOT auto-run. Any automatic
+    // deletion risks destroying uncommitted source code if the DB is empty,
+    // stale, or transiently errors. Worktrees are only deleted via explicit
+    // user opt-in (archive dialog → "Delete worktree" checkbox).
 
     // Create main window
     createMainWindow()
