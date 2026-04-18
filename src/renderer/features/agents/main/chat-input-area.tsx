@@ -68,7 +68,7 @@ import {
   type SubChatFileChange,
 } from "../atoms"
 import { useAgentSubChatStore } from "../stores/sub-chat-store"
-import { AgentsSlashCommand, type SlashCommandOption } from "../commands"
+import { AgentsSlashCommand, BUILTIN_SLASH_COMMANDS, type SlashCommandOption } from "../commands"
 import { AgentModelSelector } from "../components/agent-model-selector"
 import { AgentSendButton } from "../components/agent-send-button"
 import type { UploadedFile, UploadedImage } from "../hooks/use-agents-file-upload"
@@ -1115,6 +1115,16 @@ export const ChatInputArea = memo(function ChatInputArea({
             // Trigger context compaction
             onCompact()
             return
+          case "help": {
+            const lines = BUILTIN_SLASH_COMMANDS.map(
+              (c) => `${c.command} — ${c.description}`,
+            ).join("\n")
+            toast.message("Available slash commands", {
+              description: lines,
+              duration: 8000,
+            })
+            return
+          }
         }
       }
 

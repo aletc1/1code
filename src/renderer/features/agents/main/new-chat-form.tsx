@@ -1461,6 +1461,16 @@ export function NewChatForm({
               setAgentMode("agent")
             }
             return
+          case "help": {
+            const lines = BUILTIN_SLASH_COMMANDS.map(
+              (c) => `${c.command} — ${c.description}`,
+            ).join("\n")
+            toast.message("Available slash commands", {
+              description: lines,
+              duration: 8000,
+            })
+            return
+          }
         }
       }
 
