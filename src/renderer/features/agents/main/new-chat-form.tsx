@@ -47,6 +47,7 @@ import {
 } from "../atoms"
 import {
   getDefaultModelForMode,
+  getDefaultThinkingForMode,
   getProviderForModelId,
 } from "../lib/model-switching"
 import { defaultAgentModeAtom } from "../../../lib/atoms"
@@ -357,8 +358,9 @@ export function NewChatForm({
 
   // When the mode changes (e.g. user toggles Plan ↔ Agent in the form, or the
   // Settings default changes before first render), switch the selected model
-  // to that mode's default. Works for both Claude and Codex defaults — the
-  // active agent is swapped accordingly so the right transport is used.
+  // and thinking effort to that mode's defaults. Works for both Claude and
+  // Codex defaults — the active agent is swapped accordingly so the right
+  // transport is used.
   useEffect(() => {
     const modeDefaultId = getDefaultModelForMode(agentMode)
     const provider = getProviderForModelId(modeDefaultId)
@@ -384,6 +386,7 @@ export function NewChatForm({
     if (model && model.id !== selectedModel.id) {
       setSelectedModel(model)
     }
+    setLastSelectedClaudeThinking(getDefaultThinkingForMode(agentMode))
     // Only fire on mode change — manual picks via setSelectedModel should not
     // be overridden by this effect re-running.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1727,7 +1730,7 @@ export function NewChatForm({
       </div>
 
       <div className="flex flex-1 items-center justify-center overflow-y-auto relative">
-        <div className="w-full max-w-2xl space-y-4 md:space-y-6 relative z-10 px-4">
+        <div className="w-full max-w-5xl space-y-4 md:space-y-6 relative z-10 px-4">
           {/* Title - only show when project is selected */}
           {validatedProject && (
             <div className="text-center">

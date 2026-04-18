@@ -16,9 +16,11 @@ import {
 } from "../../../lib/atoms"
 import {
   defaultAgentModeModelAtom,
+  defaultAgentModeThinkingAtom,
   defaultPlanModeModelAtom,
+  defaultPlanModeThinkingAtom,
   defaultReviewModeModelAtom,
-  lastSelectedClaudeThinkingAtom,
+  defaultReviewModeThinkingAtom,
 } from "../../../features/agents/atoms"
 import {
   CLAUDE_MODELS,
@@ -179,9 +181,6 @@ function formatModelLabel(modelId: string, options: ModelOption[]): string {
 }
 
 export function AgentsPreferencesTab() {
-  const [claudeThinking, setClaudeThinking] = useAtom(
-    lastSelectedClaudeThinkingAtom,
-  )
   const [soundEnabled, setSoundEnabled] = useAtom(soundNotificationsEnabledAtom)
   const [desktopNotificationsEnabled, setDesktopNotificationsEnabled] = useAtom(desktopNotificationsEnabledAtom)
   const [notifyWhenFocused, setNotifyWhenFocused] = useAtom(notifyWhenFocusedAtom)
@@ -195,6 +194,15 @@ export function AgentsPreferencesTab() {
   )
   const [defaultReviewModel, setDefaultReviewModel] = useAtom(
     defaultReviewModeModelAtom,
+  )
+  const [defaultPlanThinking, setDefaultPlanThinking] = useAtom(
+    defaultPlanModeThinkingAtom,
+  )
+  const [defaultAgentThinking, setDefaultAgentThinking] = useAtom(
+    defaultAgentModeThinkingAtom,
+  )
+  const [defaultReviewThinking, setDefaultReviewThinking] = useAtom(
+    defaultReviewModeThinkingAtom,
   )
   const hiddenModels = useAtomValue(hiddenModelsAtom)
   const modelOptions = useMemo(
@@ -246,38 +254,6 @@ export function AgentsPreferencesTab() {
         <div className="flex items-center justify-between p-4">
           <div className="flex flex-col space-y-1">
             <span className="text-sm font-medium text-foreground">
-              Thinking Effort
-            </span>
-            <span className="text-xs text-muted-foreground">
-              Default effort level for Claude's reasoning. Higher levels think
-              longer and use more credits.
-            </span>
-          </div>
-          <Select
-            value={claudeThinking}
-            onValueChange={(value: ClaudeThinkingLevel) =>
-              setClaudeThinking(value)
-            }
-          >
-            <SelectTrigger className="w-auto px-2">
-              <span className="text-xs">
-                {formatClaudeThinkingLabel(claudeThinking)}
-              </span>
-            </SelectTrigger>
-            <SelectContent>
-              {(
-                ["off", "low", "medium", "high", "xhigh", "max"] as const
-              ).map((level) => (
-                <SelectItem key={level} value={level}>
-                  {formatClaudeThinkingLabel(level)}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-        <div className="flex items-center justify-between p-4 border-t border-border">
-          <div className="flex flex-col space-y-1">
-            <span className="text-sm font-medium text-foreground">
               Default Mode
             </span>
             <span className="text-xs text-muted-foreground">
@@ -299,87 +275,158 @@ export function AgentsPreferencesTab() {
             </SelectContent>
           </Select>
         </div>
-        <div className="flex items-center justify-between p-4 border-t border-border">
-          <div className="flex flex-col space-y-1">
+        <div className="flex items-center justify-between p-4 border-t border-border gap-4">
+          <div className="flex flex-col space-y-1 min-w-0">
             <span className="text-sm font-medium text-foreground">
-              Default Plan Mode Model
+              Default Plan
             </span>
             <span className="text-xs text-muted-foreground">
-              Model used when a chat starts or switches to Plan mode
+              Model and thinking effort applied when a chat starts or switches
+              to Plan mode
             </span>
           </div>
-          <Select
-            value={defaultPlanModel}
-            onValueChange={(value: string) => setDefaultPlanModel(value)}
-          >
-            <SelectTrigger className="w-auto px-2">
-              <span className="text-xs">
-                {formatModelLabel(defaultPlanModel, modelOptions)}
-              </span>
-            </SelectTrigger>
-            <SelectContent>
-              {modelOptions.map((model) => (
-                <SelectItem key={model.id} value={model.id}>
-                  {model.label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          <div className="flex items-center gap-2 flex-shrink-0">
+            <Select
+              value={defaultPlanModel}
+              onValueChange={(value: string) => setDefaultPlanModel(value)}
+            >
+              <SelectTrigger className="w-auto px-2">
+                <span className="text-xs">
+                  {formatModelLabel(defaultPlanModel, modelOptions)}
+                </span>
+              </SelectTrigger>
+              <SelectContent>
+                {modelOptions.map((model) => (
+                  <SelectItem key={model.id} value={model.id}>
+                    {model.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Select
+              value={defaultPlanThinking}
+              onValueChange={(value: ClaudeThinkingLevel) =>
+                setDefaultPlanThinking(value)
+              }
+            >
+              <SelectTrigger className="w-auto px-2">
+                <span className="text-xs">
+                  {formatClaudeThinkingLabel(defaultPlanThinking)}
+                </span>
+              </SelectTrigger>
+              <SelectContent>
+                {(
+                  ["off", "low", "medium", "high", "xhigh", "max"] as const
+                ).map((level) => (
+                  <SelectItem key={level} value={level}>
+                    {formatClaudeThinkingLabel(level)}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
         </div>
-        <div className="flex items-center justify-between p-4 border-t border-border">
-          <div className="flex flex-col space-y-1">
+        <div className="flex items-center justify-between p-4 border-t border-border gap-4">
+          <div className="flex flex-col space-y-1 min-w-0">
             <span className="text-sm font-medium text-foreground">
-              Default Agent Mode Model
+              Default Agent
             </span>
             <span className="text-xs text-muted-foreground">
-              Model used when a chat starts or switches to Agent mode (e.g. after
-              approving a plan)
+              Model and thinking effort applied when a chat starts or switches
+              to Agent mode (e.g. after approving a plan)
             </span>
           </div>
-          <Select
-            value={defaultAgentModel}
-            onValueChange={(value: string) => setDefaultAgentModel(value)}
-          >
-            <SelectTrigger className="w-auto px-2">
-              <span className="text-xs">
-                {formatModelLabel(defaultAgentModel, modelOptions)}
-              </span>
-            </SelectTrigger>
-            <SelectContent>
-              {modelOptions.map((model) => (
-                <SelectItem key={model.id} value={model.id}>
-                  {model.label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          <div className="flex items-center gap-2 flex-shrink-0">
+            <Select
+              value={defaultAgentModel}
+              onValueChange={(value: string) => setDefaultAgentModel(value)}
+            >
+              <SelectTrigger className="w-auto px-2">
+                <span className="text-xs">
+                  {formatModelLabel(defaultAgentModel, modelOptions)}
+                </span>
+              </SelectTrigger>
+              <SelectContent>
+                {modelOptions.map((model) => (
+                  <SelectItem key={model.id} value={model.id}>
+                    {model.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Select
+              value={defaultAgentThinking}
+              onValueChange={(value: ClaudeThinkingLevel) =>
+                setDefaultAgentThinking(value)
+              }
+            >
+              <SelectTrigger className="w-auto px-2">
+                <span className="text-xs">
+                  {formatClaudeThinkingLabel(defaultAgentThinking)}
+                </span>
+              </SelectTrigger>
+              <SelectContent>
+                {(
+                  ["off", "low", "medium", "high", "xhigh", "max"] as const
+                ).map((level) => (
+                  <SelectItem key={level} value={level}>
+                    {formatClaudeThinkingLabel(level)}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
         </div>
-        <div className="flex items-center justify-between p-4 border-t border-border">
-          <div className="flex flex-col space-y-1">
+        <div className="flex items-center justify-between p-4 border-t border-border gap-4">
+          <div className="flex flex-col space-y-1 min-w-0">
             <span className="text-sm font-medium text-foreground">
-              Default Review Mode Model
+              Default Review
             </span>
             <span className="text-xs text-muted-foreground">
-              Model used when running /review or /security-review
+              Model and thinking effort applied when running /review or
+              /security-review
             </span>
           </div>
-          <Select
-            value={defaultReviewModel}
-            onValueChange={(value: string) => setDefaultReviewModel(value)}
-          >
-            <SelectTrigger className="w-auto px-2">
-              <span className="text-xs">
-                {formatModelLabel(defaultReviewModel, modelOptions)}
-              </span>
-            </SelectTrigger>
-            <SelectContent>
-              {modelOptions.map((model) => (
-                <SelectItem key={model.id} value={model.id}>
-                  {model.label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          <div className="flex items-center gap-2 flex-shrink-0">
+            <Select
+              value={defaultReviewModel}
+              onValueChange={(value: string) => setDefaultReviewModel(value)}
+            >
+              <SelectTrigger className="w-auto px-2">
+                <span className="text-xs">
+                  {formatModelLabel(defaultReviewModel, modelOptions)}
+                </span>
+              </SelectTrigger>
+              <SelectContent>
+                {modelOptions.map((model) => (
+                  <SelectItem key={model.id} value={model.id}>
+                    {model.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Select
+              value={defaultReviewThinking}
+              onValueChange={(value: ClaudeThinkingLevel) =>
+                setDefaultReviewThinking(value)
+              }
+            >
+              <SelectTrigger className="w-auto px-2">
+                <span className="text-xs">
+                  {formatClaudeThinkingLabel(defaultReviewThinking)}
+                </span>
+              </SelectTrigger>
+              <SelectContent>
+                {(
+                  ["off", "low", "medium", "high", "xhigh", "max"] as const
+                ).map((level) => (
+                  <SelectItem key={level} value={level}>
+                    {formatClaudeThinkingLabel(level)}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
         </div>
         <div className="flex items-center justify-between p-4 border-t border-border">
           <div className="flex flex-col space-y-1">
