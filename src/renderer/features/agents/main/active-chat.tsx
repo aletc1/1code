@@ -41,7 +41,8 @@ import {
   ChevronDown,
   GitFork,
   ListTree,
-  TerminalSquare
+  TerminalSquare,
+  X as XIcon,
 } from "lucide-react"
 import { AnimatePresence, motion } from "motion/react"
 import {
@@ -229,10 +230,11 @@ import { MobileChatHeader } from "../ui/mobile-chat-header"
 import { QuickCommentInput } from "../ui/quick-comment-input"
 import { SubChatSelector } from "../ui/sub-chat-selector"
 import { SubChatStatusCard } from "../ui/sub-chat-status-card"
-import { SplitViewContainer } from "../ui/split-view-container"
+import { SplitViewContainer, SplitDropZone } from "../ui/split-view-container"
 import { TextSelectionPopover } from "../ui/text-selection-popover"
 import { autoRenameAgentChat } from "../utils/auto-rename"
 import { generateCommitToPrMessage, generatePrMessage, generateReviewMessage } from "../utils/pr-message"
+import { extractGitActivity } from "../utils/git-activity"
 import { ChatInputArea } from "./chat-input-area"
 import { IsolatedMessagesSection } from "./isolated-messages-section"
 const clearSubChatSelectionAtom = atom(null, () => {})
@@ -774,6 +776,37 @@ function PlayButton({
     </div>
   )
 }
+
+// Persistent (not hover-to-reveal) — hiding the button on hover caused it to
+// vanish as the pointer approached it.
+const SplitPaneInlineClose = memo(function SplitPaneInlineClose({
+  subChatId,
+}: {
+  subChatId: string
+}) {
+  const removeFromSplit = useAgentSubChatStore((s) => s.removeFromSplit)
+  const splitPaneCount = useAgentSubChatStore((s) => s.splitPaneIds.length)
+  const isLastPair = splitPaneCount === 2
+  const label = isLastPair ? "Close split view" : "Remove from split"
+  return (
+    <Tooltip delayDuration={500}>
+      <TooltipTrigger asChild>
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation()
+            removeFromSplit(subChatId)
+          }}
+          aria-label={label}
+          className="flex-shrink-0 mr-4 p-1 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+        >
+          <XIcon className="h-3.5 w-3.5" />
+        </button>
+      </TooltipTrigger>
+      <TooltipContent side="bottom">{label}</TooltipContent>
+    </Tooltip>
+  )
+})
 
 // Isolated scroll-to-bottom button - uses own scroll listener to avoid re-renders of parent
 const ScrollToBottomButton = memo(function ScrollToBottomButton({
@@ -2153,6 +2186,7 @@ const ChatViewInner = memo(function ChatViewInner({
 
   // tRPC utils for cache invalidation
   const utils = api.useUtils()
+  const trpcUtils = trpc.useUtils()
 
   // Get sub-chat name from store
   const subChatName = useAgentSubChatStore(
@@ -2823,6 +2857,30 @@ const ChatViewInner = memo(function ChatViewInner({
       return () => clearTimeout(flagTimeout)
     }
   }, [isStreaming, subChatId, pendingQuestions, setPendingQuestionsMap])
+
+  // PR status auto-refresh on stream end. `messages` is tracked via a ref so
+  // the effect doesn't re-run on every streamed chunk — only on the transition.
+  const prAutoRefreshWasStreamingRef = useRef(false)
+  const prAutoRefreshMessagesRef = useRef(messages)
+  prAutoRefreshMessagesRef.current = messages
+  useEffect(() => {
+    const wasStreaming = prAutoRefreshWasStreamingRef.current
+    prAutoRefreshWasStreamingRef.current = isStreaming
+    if (!(wasStreaming && !isStreaming)) return
+
+    const allParts = prAutoRefreshMessagesRef.current.flatMap(
+      (m: any) => m.parts || [],
+    )
+    const activity = extractGitActivity(allParts)
+    if (!activity) return
+
+    trpcUtils.chats.getPrStatus.invalidate({ chatId: parentChatId })
+    if (projectPath) {
+      trpcUtils.changes.getGitHubStatus.invalidate({
+        worktreePath: projectPath,
+      })
+    }
+  }, [isStreaming, parentChatId, projectPath, trpcUtils])
 
   // Sync pending questions with messages state
   // This handles: 1) restoring on chat switch, 2) clearing when question is answered/timed out
@@ -4653,14 +4711,22 @@ const ChatViewInner = memo(function ChatViewInner({
             isSubChatsSidebarOpen ? "pt-[52px]" : "pt-2",
           )}
         >
-          <ChatTitleEditor
-            name={subChatName}
-            placeholder="New Chat"
-            onSave={handleRenameSubChat}
-            isMobile={false}
-            chatId={subChatId}
-            hasMessages={true} /* Always show "New Chat" placeholder when name is empty */
-          />
+          {/* Title row: ChatTitleEditor on the left, per-pane close X on the
+              right for split panes. Flex layout ensures the X sits on the same
+              visual row as the title rather than floating in a corner. */}
+          <div className="flex items-center">
+            <div className="flex-1 min-w-0">
+              <ChatTitleEditor
+                name={subChatName}
+                placeholder="New Chat"
+                onSave={handleRenameSubChat}
+                isMobile={false}
+                chatId={subChatId}
+                hasMessages={true} /* Always show "New Chat" placeholder when name is empty */
+              />
+            </div>
+            {isSplitPane && <SplitPaneInlineClose subChatId={subChatId} />}
+          </div>
           {/* Workspace subtitle: repo • branch */}
           {(workspaceRepoName || workspaceBranch) && (
             <div className="max-w-5xl mx-auto px-4">
@@ -4762,6 +4828,9 @@ const ChatViewInner = memo(function ChatViewInner({
                   queue={queue}
                   onRemoveItem={handleRemoveFromQueue}
                   onSendNow={handleSendFromQueue}
+                  onReorder={(from, to) =>
+                    useMessageQueueStore.getState().reorderQueue(subChatId, from, to)
+                  }
                   isStreaming={isStreaming}
                   hasStatusCardBelow={shouldShowStatusCard}
                 />
@@ -7063,6 +7132,8 @@ Make sure to preserve all functionality from both branches when resolving confli
       agentChatStore.setStreamId(newId, null) // New chat has no active stream
       forceUpdate({}) // Trigger re-render
     }
+
+    return newId
   }, [
     worktreePath,
     chatId,
@@ -7080,22 +7151,48 @@ Make sure to preserve all functionality from both branches when resolving confli
     agentChat?.name,
   ])
 
+  // Create a new sub-chat AND place it in split view with the previously active tab.
+  // Used by Cmd+Shift+T. Passes the pre-creation active tab as the explicit first pane
+  // because handleCreateNewSubChat flips activeSubChatId to the new id.
+  const handleCreateNewSubChatInSplit = useCallback(() => {
+    const prevActive = useAgentSubChatStore.getState().activeSubChatId
+    const newId = handleCreateNewSubChat()
+    if (!newId || !prevActive) return
+    useAgentSubChatStore.getState().addToSplit(newId, prevActive)
+  }, [handleCreateNewSubChat])
+
   // Keyboard shortcut: New sub-chat
   // Web: Opt+Cmd+T (browser uses Cmd+T for new tab)
   // Desktop: Cmd+T
+  // Cmd+Shift+T (desktop) / Opt+Cmd+Shift+T (web) opens the new sub-chat in split view.
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       const isDesktop = isDesktopApp()
 
-      // Desktop: Cmd+T (without Alt)
-      if (isDesktop && e.metaKey && e.code === "KeyT" && !e.altKey) {
+      // Desktop: Cmd+Shift+T — new sub-chat in split view.
+      // Must be checked BEFORE the plain Cmd+T branch (which doesn't require Shift).
+      if (isDesktop && e.metaKey && e.shiftKey && e.code === "KeyT" && !e.altKey) {
+        e.preventDefault()
+        handleCreateNewSubChatInSplit()
+        return
+      }
+
+      // Web: Opt+Cmd+Shift+T — new sub-chat in split view.
+      if (e.altKey && e.metaKey && e.shiftKey && e.code === "KeyT") {
+        e.preventDefault()
+        handleCreateNewSubChatInSplit()
+        return
+      }
+
+      // Desktop: Cmd+T (without Alt, without Shift)
+      if (isDesktop && e.metaKey && e.code === "KeyT" && !e.altKey && !e.shiftKey) {
         e.preventDefault()
         handleCreateNewSubChat()
         return
       }
 
-      // Web: Opt+Cmd+T (with Alt)
-      if (e.altKey && e.metaKey && e.code === "KeyT") {
+      // Web: Opt+Cmd+T (with Alt, without Shift)
+      if (e.altKey && e.metaKey && e.code === "KeyT" && !e.shiftKey) {
         e.preventDefault()
         handleCreateNewSubChat()
       }
@@ -7103,7 +7200,7 @@ Make sure to preserve all functionality from both branches when resolving confli
 
     window.addEventListener("keydown", handleKeyDown)
     return () => window.removeEventListener("keydown", handleKeyDown)
-  }, [handleCreateNewSubChat])
+  }, [handleCreateNewSubChat, handleCreateNewSubChatInSplit])
 
   // NOTE: Desktop notifications for pending questions are now triggered directly
   // in ipc-chat-transport.ts when the ask-user-question chunk arrives.
@@ -7815,7 +7912,8 @@ Make sure to preserve all functionality from both branches when resolving confli
                   }
                 />
               ) : (
-                tabsToRender.map(subChatId => {
+                <SplitDropZone>
+                {tabsToRender.map(subChatId => {
                 const chat = getOrCreateChat(subChatId)
                 const isActive = subChatId === activeSubChatId
                 const isFirstSubChat = getFirstSubChatId(agentSubChats) === subChatId
@@ -7873,7 +7971,8 @@ Make sure to preserve all functionality from both branches when resolving confli
                     />
                   </div>
                 )
-              })
+              })}
+                </SplitDropZone>
               )}
             </div>
           ) : (

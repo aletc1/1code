@@ -93,18 +93,9 @@ import { useSubChatDraftsCache, getSubChatDraftKey } from "../agents/lib/drafts"
 import { Checkbox } from "../../components/ui/checkbox"
 import { TypewriterText } from "../../components/ui/typewriter-text"
 import {
-  DndContext,
-  PointerSensor,
-  useSensor,
-  useSensors,
-  closestCenter,
-  type DragEndEvent,
-} from "@dnd-kit/core"
-import {
   SortableContext,
   useSortable,
   verticalListSortingStrategy,
-  arrayMove,
 } from "@dnd-kit/sortable"
 import { CSS } from "@dnd-kit/utilities"
 
@@ -235,7 +226,10 @@ function SortableSubChatRow({
   const style: React.CSSProperties = {
     transform: CSS.Transform.toString(transform),
     transition,
-    opacity: isDragging ? 0.5 : 1,
+    // Hide the original while the DragOverlay (rendered at document root by
+    // agents-content.tsx) shows the preview; the row still occupies space so
+    // siblings don't collapse and dnd-kit's drop indicators still animate.
+    opacity: isDragging ? 0 : 1,
     zIndex: isDragging ? 10 : undefined,
     position: "relative",
   }
@@ -286,7 +280,6 @@ export function AgentsSubChatsSidebar({
     addToSplit,
     removeFromSplit,
     closeSplit,
-    setOpenSubChats,
   } = useAgentSubChatStore(
     useShallow((state) => ({
       activeSubChatId: state.activeSubChatId,
@@ -299,31 +292,13 @@ export function AgentsSubChatsSidebar({
       addToSplit: state.addToSplit,
       removeFromSplit: state.removeFromSplit,
       closeSplit: state.closeSplit,
-      setOpenSubChats: state.setOpenSubChats,
     }))
   )
 
-  // DnD sensors. 4px activation distance so a click doesn't get hijacked into a drag.
-  const dndSensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
-  )
+  // DnD is managed at a shared parent (agents-content.tsx) so that sub-chats
+  // can be dragged out of the sidebar and into the split-view drop zone.
+  // The SortableContext blocks below remain to provide in-sidebar reordering.
 
-  // Handles drag-end: rebuild openSubChatIds with the new order.
-  // Maps the in-section reorder back to the global openSubChatIds list (search-aware).
-  const handleSidebarDragEnd = useCallback(
-    (event: DragEndEvent) => {
-      const { active, over } = event
-      if (!over || active.id === over.id) return
-      const activeId = String(active.id)
-      const overId = String(over.id)
-      const fromIdx = openSubChatIds.indexOf(activeId)
-      const toIdx = openSubChatIds.indexOf(overId)
-      if (fromIdx < 0 || toIdx < 0) return
-      const newIds = arrayMove(openSubChatIds, fromIdx, toIdx)
-      setOpenSubChats(newIds)
-    },
-    [openSubChatIds, setOpenSubChats],
-  )
   const [loadingSubChats] = useAtom(loadingSubChatsAtom)
   const subChatFiles = useAtomValue(subChatFilesAtom)
   const selectedTeamId = useAtomValue(selectedTeamIdAtom)
@@ -1341,11 +1316,6 @@ export function AgentsSubChatsSidebar({
                 <div
                   className={cn("mb-4", isMultiSelectMode ? "px-0" : "-mx-1")}
                 >
-                  <DndContext
-                    sensors={dndSensors}
-                    collisionDetection={closestCenter}
-                    onDragEnd={handleSidebarDragEnd}
-                  >
                   {/* Pinned section */}
                   {pinnedChats.length > 0 && (
                     <>
@@ -1977,7 +1947,6 @@ export function AgentsSubChatsSidebar({
                       </div>
                     </>
                   )}
-                  </DndContext>
                 </div>
               ) : searchQuery.trim() ? (
                 <div className="flex items-center justify-center h-full text-sm text-muted-foreground p-4 text-center">

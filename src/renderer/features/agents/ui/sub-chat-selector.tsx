@@ -251,6 +251,7 @@ export function SubChatSelector({
   const toggleTerminalHotkey = useResolvedHotkeyDisplay("toggle-terminal")
   const archiveAgentHotkey = useResolvedHotkeyDisplay("archive-agent")
   const newAgentHotkey = useResolvedHotkeyDisplay("new-agent")
+  const newAgentSplitHotkey = useResolvedHotkeyDisplay("new-agent-split")
 
   // Pending plan approvals from DB - only for open sub-chats
   const { data: pendingPlanApprovalsData } = trpc.chats.getPendingPlanApprovals.useQuery(
@@ -553,7 +554,6 @@ export function SubChatSelector({
       window.removeEventListener("keydown", handleHistoryHotkey, true)
   }, [subChatsSidebarMode])
 
-  // Keyboard shortcut: Cmd+Shift+T / Ctrl+Shift+T for new sub-chat
   // Scroll to active tab when it changes
   useEffect(() => {
     if (!activeSubChatId || !tabsContainerRef.current) return
@@ -1017,9 +1017,17 @@ export function SubChatSelector({
                     <Plus className="h-4 w-4" />
                   </Button>
                 </TooltipTrigger>
-                <TooltipContent side="bottom">
-                  New chat
-                  {newAgentHotkey && <Kbd>{newAgentHotkey}</Kbd>}
+                <TooltipContent side="bottom" className="flex flex-col items-start gap-1">
+                  <div className="flex items-center gap-1.5">
+                    <span>New chat</span>
+                    {newAgentHotkey && <Kbd>{newAgentHotkey}</Kbd>}
+                  </div>
+                  {newAgentSplitHotkey && (
+                    <div className="flex items-center gap-1.5">
+                      <span>New in split</span>
+                      <Kbd>{newAgentSplitHotkey}</Kbd>
+                    </div>
+                  )}
                 </TooltipContent>
               </Tooltip>
             </div>
