@@ -8,8 +8,23 @@ if (process.env.NODE_ENV === "production") {
   })
 }
 
-// Expose tRPC IPC bridge for type-safe communication
-exposeElectronTRPC()
+// Expose tRPC IPC bridge for type-safe communication.
+// Guard against a race where exposeElectronTRPC throws during preload boot
+// (observed as a black screen crash). Surface the error to the renderer via
+// a flag the AppErrorBoundary reads on mount, so we can recover instead of
+// rendering a blank window.
+try {
+  exposeElectronTRPC()
+} catch (err) {
+  const message = err instanceof Error ? err.message : String(err)
+  console.error("[preload] exposeElectronTRPC failed:", err)
+  try {
+    contextBridge.exposeInMainWorld("__ipcBootError", message)
+  } catch {
+    // If even the contextBridge call fails, nothing more we can do here —
+    // the renderer will still show its error boundary on the first React crash.
+  }
+}
 
 // Expose webUtils for file path access in drag and drop
 contextBridge.exposeInMainWorld("webUtils", {
