@@ -6834,7 +6834,7 @@ Make sure to preserve all functionality from both branches when resolving confli
   )
 
   // Handle creating a new sub-chat
-  const handleCreateNewSubChat = useCallback(async () => {
+  const handleCreateNewSubChat = useCallback(() => {
     const store = useAgentSubChatStore.getState()
     const sourceSubChatId = activeSubChatId || ""
     // New sub-chats use the user's default mode preference
@@ -6844,25 +6844,12 @@ Make sure to preserve all functionality from both branches when resolving confli
     // Check if this is a remote sandbox chat
     const isRemoteChat = !!(agentChat as any)?.isRemote
 
-    let newId: string
+    // Generate ID locally for instant UI update; persist to DB in background for local mode.
+    const newId = crypto.randomUUID()
 
-    if (isRemoteChat) {
-      // Sandbox mode: lazy creation (web app pattern)
-      // Sub-chat will be persisted on first message via RemoteChatTransport UPSERT
-      newId = crypto.randomUUID()
-    } else {
-      // Local mode: create sub-chat in DB first to get the real ID
-      const newSubChat = await trpcClient.chats.createSubChat.mutate({
-        chatId,
-        name: "New Chat",
-        mode: newSubChatMode,
-      })
-      newId = newSubChat.id
-      utils.agents.getAgentChat.invalidate({ chatId })
-
-      // Optimistic update: add new sub-chat to React Query cache immediately
-      // This is CRITICAL for workspace isolation - without this, the new sub-chat
-      // won't be in validSubChatIds and will be filtered out by tabsToRender
+    if (!isRemoteChat) {
+      // Local mode: optimistically add to React Query cache so workspace isolation
+      // (validSubChatIds / tabsToRender) immediately recognizes the new sub-chat.
       utils.agents.getAgentChat.setData({ chatId }, (old) => {
         if (!old) return old
         return {
@@ -6881,7 +6868,30 @@ Make sure to preserve all functionality from both branches when resolving confli
           ],
         }
       })
+
+      // Fire-and-forget the DB insert. On failure, roll back the optimistic update.
+      // Do NOT pass `name` — leave it NULL in DB so the app-quit cleanup can
+      // recognize never-named, never-used sub-chats. UI displays "New Chat" via fallback.
+      trpcClient.chats.createSubChat
+        .mutate({
+          id: newId,
+          chatId,
+          mode: newSubChatMode,
+        })
+        .catch((error) => {
+          console.error("[handleCreateNewSubChat] Failed to create sub-chat:", error)
+          utils.agents.getAgentChat.setData({ chatId }, (old) => {
+            if (!old) return old
+            return {
+              ...old,
+              subChats: (old.subChats || []).filter((sc: any) => sc.id !== newId),
+            }
+          })
+          useAgentSubChatStore.getState().removeFromOpenSubChats(newId)
+          toast.error("Failed to create chat")
+        })
     }
+    // Sandbox mode (isRemoteChat === true): lazy creation via RemoteChatTransport UPSERT on first message
 
     // Track this subchat as just created for typewriter effect
     setJustCreatedIds((prev) => new Set([...prev, newId]))

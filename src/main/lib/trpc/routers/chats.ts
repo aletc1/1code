@@ -12,6 +12,7 @@ import {
   trackWorkspaceDeleted,
 } from "../../analytics"
 import { chats, getDatabase, projects, subChats } from "../../db"
+import { computeFileStatsFromMessages } from "../../file-stats"
 import {
   createWorktreeForChat,
   fetchGitHubPRStatus,
@@ -724,10 +725,14 @@ export const chatsRouter = router({
 
   /**
    * Create a new sub-chat
+   *
+   * Accepts an optional client-provided `id` so the renderer can do optimistic UI
+   * (insert the row in the store synchronously, then fire-and-forget the create).
    */
   createSubChat: publicProcedure
     .input(
       z.object({
+        id: z.string().optional(),
         chatId: z.string(),
         name: z.string().optional(),
         mode: z.enum(["plan", "agent"]).default("agent"),
@@ -738,6 +743,7 @@ export const chatsRouter = router({
       return db
         .insert(subChats)
         .values({
+          ...(input.id ? { id: input.id } : {}),
           chatId: input.chatId,
           name: input.name,
           mode: input.mode,
@@ -880,10 +886,13 @@ export const chatsRouter = router({
               delete m.metadata.shouldForkResume
             }
           }
-          db.update(subChats)
-            .set({ messages: JSON.stringify(forkedMessages) })
-            .where(eq(subChats.id, newSubChat.id))
-            .run()
+          {
+            const forkedJson = JSON.stringify(forkedMessages)
+            db.update(subChats)
+              .set({ messages: forkedJson, ...computeFileStatsFromMessages(forkedJson) })
+              .where(eq(subChats.id, newSubChat.id))
+              .run()
+          }
         }
       }
 
@@ -905,7 +914,11 @@ export const chatsRouter = router({
       const db = getDatabase()
       return db
         .update(subChats)
-        .set({ messages: input.messages, updatedAt: new Date() })
+        .set({
+          messages: input.messages,
+          ...computeFileStatsFromMessages(input.messages),
+          updatedAt: new Date(),
+        })
         .where(eq(subChats.id, input.id))
         .returning()
         .get()
@@ -985,14 +998,18 @@ export const chatsRouter = router({
       })
 
       // 6. Update the sub-chat with truncated messages
-      db.update(subChats)
-        .set({
-          messages: JSON.stringify(truncatedMessages),
-          updatedAt: new Date(),
-        })
-        .where(eq(subChats.id, input.subChatId))
-        .returning()
-        .get()
+      {
+        const truncatedJson = JSON.stringify(truncatedMessages)
+        db.update(subChats)
+          .set({
+            messages: truncatedJson,
+            ...computeFileStatsFromMessages(truncatedJson),
+            updatedAt: new Date(),
+          })
+          .where(eq(subChats.id, input.subChatId))
+          .returning()
+          .get()
+      }
 
       return {
         success: true,
@@ -1058,6 +1075,40 @@ export const chatsRouter = router({
         .where(eq(subChats.id, input.id))
         .returning()
         .get()
+    }),
+
+  /**
+   * Delete a sub-chat only if it has no messages.
+   * Used for auto-cleanup when a tab is closed without ever being used.
+   * Idempotent — returns null if the sub-chat doesn't exist or has messages.
+   */
+  deleteSubChatIfEmpty: publicProcedure
+    .input(z.object({ id: z.string() }))
+    .mutation(({ input }) => {
+      const db = getDatabase()
+      return db
+        .delete(subChats)
+        .where(and(eq(subChats.id, input.id), eq(subChats.messages, "[]")))
+        .returning()
+        .get() ?? null
+    }),
+
+  /**
+   * Bulk-delete any sub-chats from the given id list that have no messages.
+   * Used on window/app close to sweep up sub-chats created in the session
+   * that the user never sent a message in.
+   */
+  deleteEmptySubChatsByIds: publicProcedure
+    .input(z.object({ ids: z.array(z.string()) }))
+    .mutation(({ input }) => {
+      if (input.ids.length === 0) return { deleted: 0 }
+      const db = getDatabase()
+      const result = db
+        .delete(subChats)
+        .where(and(inArray(subChats.id, input.ids), eq(subChats.messages, "[]")))
+        .returning()
+        .all()
+      return { deleted: result.length }
     }),
 
   /**
@@ -1622,8 +1673,9 @@ export const chatsRouter = router({
     }),
 
   /**
-   * Get file change stats for workspaces
-   * Parses messages from specified sub-chats and aggregates Edit/Write tool calls
+   * Get file change stats for workspaces.
+   *
+   * Reads from cached columns on `sub_chats` (kept in sync by every messages-write path).
    * Supports two modes:
    * - openSubChatIds: query specific sub-chats (used by main sidebar)
    * - chatIds: query all sub-chats for given chats (used by archive popover)
@@ -1642,143 +1694,30 @@ export const chatsRouter = router({
       return []
     }
 
-    // Query sub-chats based on input mode
-    let allChats: Array<{ chatId: string | null; subChatId: string; messages: string | null }>
+    const whereClause = input.chatIds && input.chatIds.length > 0
+      ? inArray(subChats.chatId, input.chatIds)
+      : inArray(subChats.id, input.openSubChatIds!)
 
-    if (input.chatIds && input.chatIds.length > 0) {
-      // Archive mode: query all sub-chats for given chat IDs
-      // Pre-filter with LIKE to skip sub-chats without file edits (avoids loading/parsing large JSON)
-      allChats = db
-        .select({
-          chatId: subChats.chatId,
-          subChatId: subChats.id,
-          messages: subChats.messages,
-        })
-        .from(subChats)
-        .where(
-          and(
-            inArray(subChats.chatId, input.chatIds),
-            sql`(${subChats.messages} LIKE '%tool-Edit%' OR ${subChats.messages} LIKE '%tool-Write%')`
-          )
-        )
-        .all()
-    } else {
-      // Main sidebar mode: query specific sub-chats
-      allChats = db
-        .select({
-          chatId: subChats.chatId,
-          subChatId: subChats.id,
-          messages: subChats.messages,
-        })
-        .from(subChats)
-        .where(inArray(subChats.id, input.openSubChatIds!))
-        .all()
-    }
+    const rows = db
+      .select({
+        chatId: subChats.chatId,
+        additions: sql<number>`COALESCE(SUM(${subChats.fileStatsAdditions}), 0)`,
+        deletions: sql<number>`COALESCE(SUM(${subChats.fileStatsDeletions}), 0)`,
+        fileCount: sql<number>`COALESCE(SUM(${subChats.fileStatsFileCount}), 0)`,
+      })
+      .from(subChats)
+      .where(whereClause)
+      .groupBy(subChats.chatId)
+      .all()
 
-    // Aggregate stats per workspace (chatId)
-    const statsMap = new Map<
-      string,
-      { additions: number; deletions: number; fileCount: number }
-    >()
-
-    for (const row of allChats) {
-      if (!row.messages || !row.chatId) continue
-      const chatId = row.chatId // TypeScript narrowing
-
-      try {
-        const messages = JSON.parse(row.messages) as Array<{
-          role: string
-          parts?: Array<{
-            type: string
-            input?: {
-              file_path?: string
-              old_string?: string
-              new_string?: string
-              content?: string
-            }
-          }>
-        }>
-
-        // Track file states for this sub-chat
-        const fileStates = new Map<
-          string,
-          { originalContent: string | null; currentContent: string }
-        >()
-
-        for (const msg of messages) {
-          if (msg.role !== "assistant") continue
-          for (const part of msg.parts || []) {
-            if (part.type === "tool-Edit" || part.type === "tool-Write") {
-              const filePath = part.input?.file_path
-              if (!filePath) continue
-              // Skip session files
-              if (
-                filePath.includes("claude-sessions") ||
-                filePath.includes("Application Support")
-              )
-                continue
-
-              const oldString = part.input?.old_string || ""
-              const newString =
-                part.input?.new_string || part.input?.content || ""
-
-              const existing = fileStates.get(filePath)
-              if (existing) {
-                existing.currentContent = newString
-              } else {
-                fileStates.set(filePath, {
-                  originalContent: part.type === "tool-Write" ? null : oldString,
-                  currentContent: newString,
-                })
-              }
-            }
-          }
-        }
-
-        // Calculate stats for this sub-chat and add to workspace total
-        let subChatAdditions = 0
-        let subChatDeletions = 0
-        let subChatFileCount = 0
-
-        for (const [, state] of fileStates) {
-          const original = state.originalContent || ""
-          if (original === state.currentContent) continue
-
-          const oldLines = original ? original.split("\n").length : 0
-          const newLines = state.currentContent
-            ? state.currentContent.split("\n").length
-            : 0
-
-          if (!original) {
-            // New file
-            subChatAdditions += newLines
-          } else {
-            subChatAdditions += newLines
-            subChatDeletions += oldLines
-          }
-          subChatFileCount += 1
-        }
-
-        // Add to workspace total
-        const existing = statsMap.get(chatId) || {
-          additions: 0,
-          deletions: 0,
-          fileCount: 0,
-        }
-        existing.additions += subChatAdditions
-        existing.deletions += subChatDeletions
-        existing.fileCount += subChatFileCount
-        statsMap.set(chatId, existing)
-      } catch {
-        // Skip invalid JSON
-      }
-    }
-
-    // Convert to array for easier consumption
-    return Array.from(statsMap.entries()).map(([chatId, stats]) => ({
-      chatId,
-      ...stats,
-    }))
+    return rows
+      .filter((r) => r.chatId !== null && r.fileCount > 0)
+      .map((r) => ({
+        chatId: r.chatId as string,
+        additions: Number(r.additions),
+        deletions: Number(r.deletions),
+        fileCount: Number(r.fileCount),
+      }))
   }),
 
   /**

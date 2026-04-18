@@ -31,6 +31,7 @@ import {
   type McpServerConfig,
 } from "../../claude-config"
 import { anthropicAccounts, anthropicSettings, chats, claudeCodeCredentials, getDatabase, projects as projectsTable, subChats } from "../../db"
+import { computeFileStatsFromMessages } from "../../file-stats"
 import { createRollbackStash } from "../../git/stash"
 import {
   ensureMcpTokensFresh,
@@ -963,10 +964,13 @@ export const claudeRouter = router({
                   delete m.metadata.shouldForkResume
                 }
               }
-              db.update(subChats)
-                .set({ messages: JSON.stringify(existingMessages) })
-                .where(eq(subChats.id, input.subChatId))
-                .run()
+              {
+                const existingJson = JSON.stringify(existingMessages)
+                db.update(subChats)
+                  .set({ messages: existingJson, ...computeFileStatsFromMessages(existingJson) })
+                  .where(eq(subChats.id, input.subChatId))
+                  .run()
+              }
             }
 
             // Check if last message is already this user message (avoid duplicate)
@@ -1005,14 +1009,18 @@ export const claudeRouter = router({
               }
               messagesToSave = [...existingMessages, userMessage]
 
-              db.update(subChats)
-                .set({
-                  messages: JSON.stringify(messagesToSave),
-                  streamId,
-                  updatedAt: new Date(),
-                })
-                .where(eq(subChats.id, input.subChatId))
-                .run()
+              {
+                const messagesToSaveJson = JSON.stringify(messagesToSave)
+                db.update(subChats)
+                  .set({
+                    messages: messagesToSaveJson,
+                    ...computeFileStatsFromMessages(messagesToSaveJson),
+                    streamId,
+                    updatedAt: new Date(),
+                  })
+                  .where(eq(subChats.id, input.subChatId))
+                  .run()
+              }
             }
 
             // 2.5. AUTO-FALLBACK: Check internet and switch to Ollama if offline
@@ -2695,15 +2703,19 @@ ${prompt}
                     metadata,
                   }
                   const finalMessages = [...messagesToSave, assistantMessage]
-                  db.update(subChats)
-                    .set({
-                      messages: JSON.stringify(finalMessages),
-                      sessionId: metadata.sessionId,
-                      streamId: null,
-                      updatedAt: new Date(),
-                    })
-                    .where(eq(subChats.id, input.subChatId))
-                    .run()
+                  {
+                    const finalJson = JSON.stringify(finalMessages)
+                    db.update(subChats)
+                      .set({
+                        messages: finalJson,
+                        ...computeFileStatsFromMessages(finalJson),
+                        sessionId: metadata.sessionId,
+                        streamId: null,
+                        updatedAt: new Date(),
+                      })
+                      .where(eq(subChats.id, input.subChatId))
+                      .run()
+                  }
                   db.update(chats)
                     .set({ updatedAt: new Date() })
                     .where(eq(chats.id, input.chatId))
@@ -2776,15 +2788,19 @@ ${prompt}
 
               const finalMessages = [...messagesToSave, assistantMessage]
 
-              db.update(subChats)
-                .set({
-                  messages: JSON.stringify(finalMessages),
-                  sessionId: savedSessionId,
-                  streamId: null,
-                  updatedAt: new Date(),
-                })
-                .where(eq(subChats.id, input.subChatId))
-                .run()
+              {
+                const finalJson = JSON.stringify(finalMessages)
+                db.update(subChats)
+                  .set({
+                    messages: finalJson,
+                    ...computeFileStatsFromMessages(finalJson),
+                    sessionId: savedSessionId,
+                    streamId: null,
+                    updatedAt: new Date(),
+                  })
+                  .where(eq(subChats.id, input.subChatId))
+                  .run()
+              }
             } else {
               // No assistant response - just clear streamId
               db.update(subChats)

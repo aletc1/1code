@@ -1,15 +1,18 @@
 import { z } from "zod"
 import { router, publicProcedure } from "../index"
-import { getDatabase, projects, chats, subChats } from "../../db"
-import { eq, desc, inArray } from "drizzle-orm"
+import { chats, getDatabase, projects, subChats } from "../../db"
+import { and, eq, desc, inArray, isNotNull } from "drizzle-orm"
 import { dialog, BrowserWindow, app } from "electron"
 import { basename, join } from "path"
 import { exec } from "node:child_process"
 import { promisify } from "node:util"
 import { existsSync } from "node:fs"
-import { mkdir, copyFile, unlink } from "node:fs/promises"
+import { mkdir, copyFile, readdir, rm, unlink } from "node:fs/promises"
+import { homedir } from "node:os"
 import { extname } from "node:path"
-import { getGitRemoteInfo } from "../../git"
+import { getGitRemoteInfo, removeWorktree, sanitizeProjectName } from "../../git"
+import { isPathInsideWorktreeRoot } from "../../git/worktree"
+import { terminalManager } from "../../terminal/manager"
 import { trackProjectOpened } from "../../analytics"
 import { getLaunchDirectory } from "../../cli"
 import { abortClaudeSessionsForSubChats } from "./claude"
@@ -187,30 +190,73 @@ export const projectsRouter = router({
     }),
 
   /**
-   * Delete a project and all its chats
+   * Delete a project and all its chats.
+   * Cascades worktree directory cleanup so disk doesn't accumulate orphans.
    */
   delete: publicProcedure
     .input(z.object({ id: z.string() }))
-    .mutation(({ input }) => {
+    .mutation(async ({ input }) => {
       const db = getDatabase()
+      const project = db.select().from(projects).where(eq(projects.id, input.id)).get()
+      if (!project) {
+        return null
+      }
 
-      const chatIds = db
+      // Abort any in-flight Claude sessions for the project's sub-chats so cleanup
+      // (worktree rm, FK cascade) doesn't race with active streams.
+      const childChatIds = db
         .select({ id: chats.id })
         .from(chats)
         .where(eq(chats.projectId, input.id))
         .all()
         .map((row) => row.id)
 
-      if (chatIds.length > 0) {
+      if (childChatIds.length > 0) {
         const subChatIds = db
           .select({ id: subChats.id })
           .from(subChats)
-          .where(inArray(subChats.chatId, chatIds))
+          .where(inArray(subChats.chatId, childChatIds))
           .all()
           .map((row) => row.id)
 
         if (subChatIds.length > 0) {
           abortClaudeSessionsForSubChats(subChatIds)
+        }
+      }
+
+      // Find chats with real worktrees (branch is set; project-path-only chats have no worktree)
+      const childChatsWithWorktree = db
+        .select()
+        .from(chats)
+        .where(
+          and(
+            eq(chats.projectId, input.id),
+            isNotNull(chats.worktreePath),
+            isNotNull(chats.branch),
+          ),
+        )
+        .all()
+
+      // Kill any terminals tied to those chats and remove the worktrees in parallel
+      await Promise.allSettled(
+        childChatsWithWorktree.map(async (chat) => {
+          if (chat.worktreePath) {
+            terminalManager.killByWorkspaceId(chat.id).catch(() => {})
+            await removeWorktree(project.path, chat.worktreePath)
+          }
+        }),
+      )
+
+      // Remove the project's slug directory if empty (best-effort)
+      const slugDir = join(homedir(), ".21st", "worktrees", sanitizeProjectName(project.name))
+      if (isPathInsideWorktreeRoot(slugDir)) {
+        try {
+          const entries = await readdir(slugDir)
+          if (entries.length === 0) {
+            await rm(slugDir, { recursive: true, force: true })
+          }
+        } catch {
+          // Slug dir doesn't exist or can't be read — non-fatal
         }
       }
 

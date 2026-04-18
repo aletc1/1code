@@ -17,6 +17,7 @@ import {
 import { getClaudeShellEnvironment } from "../../claude/env"
 import { resolveProjectPathFromWorktree } from "../../claude-config"
 import { getDatabase, projects as projectsTable, subChats } from "../../db"
+import { computeFileStatsFromMessages } from "../../file-stats"
 import {
   fetchMcpTools,
   fetchMcpToolsStdio,
@@ -1653,9 +1654,11 @@ export const codexRouter = router({
                 return false
               }
 
+              const json = JSON.stringify(messages)
               db.update(subChats)
                 .set({
-                  messages: JSON.stringify(messages),
+                  messages: json,
+                  ...computeFileStatsFromMessages(json),
                   updatedAt: new Date(),
                 })
                 .where(eq(subChats.id, input.subChatId))
@@ -1695,13 +1698,17 @@ export const codexRouter = router({
 
               messagesForStream = [...existingMessages, userMessage]
 
-              db.update(subChats)
-                .set({
-                  messages: JSON.stringify(messagesForStream),
-                  updatedAt: new Date(),
-                })
-                .where(eq(subChats.id, input.subChatId))
-                .run()
+              {
+                const messagesForStreamJson = JSON.stringify(messagesForStream)
+                db.update(subChats)
+                  .set({
+                    messages: messagesForStreamJson,
+                    ...computeFileStatsFromMessages(messagesForStreamJson),
+                    updatedAt: new Date(),
+                  })
+                  .where(eq(subChats.id, input.subChatId))
+                  .run()
+              }
             }
 
             if (input.forceNewSession) {

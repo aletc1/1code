@@ -948,6 +948,14 @@ if (gotTheLock) {
       console.error("[App] Failed to initialize database:", error)
     }
 
+    // Scan for orphan worktree directories in the background (non-blocking).
+    // Runs after a short delay so it doesn't compete with main-window paint.
+    setTimeout(() => {
+      import("./lib/git/worktree-cleanup")
+        .then(({ scanWorktreeOrphans }) => scanWorktreeOrphans())
+        .catch((err) => console.warn("[App] Worktree orphan scan failed to start:", err))
+    }, 5_000)
+
     // Create main window
     createMainWindow()
 
@@ -1021,6 +1029,25 @@ if (gotTheLock) {
     cancelAllPendingOAuth()
     await cleanupGitWatchers()
     await shutdownAnalytics()
+
+    // Auto-delete sub-chats that were never named and never used (messages = "[]").
+    // Conservative: keeps anything the user invested effort in (named or messaged).
+    try {
+      const { getDatabase, subChats } = await import("./lib/db")
+      const { and, eq, isNull } = await import("drizzle-orm")
+      const db = getDatabase()
+      const result = db
+        .delete(subChats)
+        .where(and(eq(subChats.messages, "[]"), isNull(subChats.name)))
+        .returning()
+        .all()
+      if (result.length > 0) {
+        console.log(`[App] Cleaned up ${result.length} empty unnamed sub-chats`)
+      }
+    } catch (error) {
+      console.warn("[App] Empty sub-chat cleanup failed:", error)
+    }
+
     await closeDatabase()
   })
 
