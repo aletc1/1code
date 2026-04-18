@@ -44,6 +44,8 @@ contextBridge.exposeInMainWorld("desktopApi", {
   getVersion: () => ipcRenderer.invoke("app:version"),
   isPackaged: () => ipcRenderer.invoke("app:isPackaged"),
 
+  // UPDATES-DISABLED: re-enable to restore update API in preload bridge
+  /*
   // Auto-update methods
   checkForUpdates: (force?: boolean) => ipcRenderer.invoke("update:check", force),
   downloadUpdate: () => ipcRenderer.invoke("update:download"),
@@ -87,6 +89,7 @@ contextBridge.exposeInMainWorld("desktopApi", {
     ipcRenderer.on("update:manual-check", handler)
     return () => ipcRenderer.removeListener("update:manual-check", handler)
   },
+  */
 
   // Window controls
   windowMinimize: () => ipcRenderer.invoke("window:minimize"),

@@ -88,8 +88,9 @@ export function AgentsLayout() {
     return unsubscribe
   }, [isDesktop, setIsFullscreen])
 
+  // UPDATES-DISABLED: re-enable to restore update checking
   // Check for updates on mount and periodically
-  useUpdateChecker()
+  // useUpdateChecker()
 
   const [sidebarOpen, setSidebarOpen] = useAtom(agentsSidebarOpenAtom)
   const [sidebarWidth, setSidebarWidth] = useAtom(agentsSidebarWidthAtom)
@@ -350,8 +351,9 @@ export function AgentsLayout() {
           </div>
         </div>
 
+        {/* UPDATES-DISABLED: re-enable to restore update banner */}
         {/* Update Banner */}
-        <UpdateBanner />
+        {/* <UpdateBanner /> */}
       </div>
     </TooltipProvider>
   )
