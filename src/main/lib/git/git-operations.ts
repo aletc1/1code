@@ -2,7 +2,11 @@ import { shell } from "electron";
 import simpleGit from "simple-git";
 import { z } from "zod";
 import { publicProcedure, router } from "../trpc";
-import { isUpstreamMissingError } from "./git-utils";
+import {
+	isUpstreamMissingError,
+	isNonFastForwardPushError,
+	REMOTE_AHEAD_ERROR_PREFIX,
+} from "./git-utils";
 import { assertRegisteredWorktree } from "./security";
 import { fetchGitHubPRStatus } from "./github";
 import { gitCache } from "./cache";
@@ -247,13 +251,24 @@ export const createGitOperationsRouter = () => {
 					const git = createGitForNetwork(input.worktreePath);
 					const hasUpstream = await hasUpstreamBranch(git);
 
-					if (input.setUpstream && !hasUpstream) {
-						const branch = await git.revparse(["--abbrev-ref", "HEAD"]);
-						await withLockRetry(input.worktreePath, () =>
-							git.push(["--set-upstream", "origin", branch.trim()])
-						);
-					} else {
-						await withLockRetry(input.worktreePath, () => git.push());
+					try {
+						if (input.setUpstream && !hasUpstream) {
+							const branch = await git.revparse(["--abbrev-ref", "HEAD"]);
+							await withLockRetry(input.worktreePath, () =>
+								git.push(["--set-upstream", "origin", branch.trim()])
+							);
+						} else {
+							await withLockRetry(input.worktreePath, () => git.push());
+						}
+					} catch (error) {
+						const message =
+							error instanceof Error ? error.message : String(error);
+						if (isNonFastForwardPushError(message)) {
+							throw new Error(
+								`${REMOTE_AHEAD_ERROR_PREFIX} Remote has new commits. Pull with rebase and retry.`
+							);
+						}
+						throw error;
 					}
 					await git.fetch();
 					invalidateGitStateCaches(input.worktreePath);
