@@ -831,7 +831,10 @@ export function SubChatSelector({
                           }
                         }}
                         className={cn(
-                          "group relative flex items-center text-sm rounded-md transition-colors duration-75 cursor-pointer h-6 flex-shrink-0",
+                          "group relative flex items-center text-sm rounded-md transition-colors duration-75 h-6 flex-shrink-0",
+                          tabIsDraggable
+                            ? (isBeingDragged ? "cursor-grabbing" : "cursor-grab active:cursor-grabbing")
+                            : "cursor-pointer",
                           "outline-offset-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-ring/70",
                           editingSubChatId === subChat.id
                             ? "overflow-visible px-0"

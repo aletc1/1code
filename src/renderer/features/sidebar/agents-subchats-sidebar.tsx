@@ -62,7 +62,7 @@ import { isDesktopApp, getShortcutKey } from "../../lib/utils/platform"
 import { useResolvedHotkeyDisplay } from "../../lib/hotkeys"
 import { TrafficLightSpacer } from "../agents/components/traffic-light-spacer"
 import { PopoverTrigger } from "../../components/ui/popover"
-import { AlignJustify } from "lucide-react"
+import { AlignJustify, GripVertical } from "lucide-react"
 import {
   ContextMenu,
   ContextMenuContent,
@@ -245,9 +245,22 @@ function SortableSubChatRow({
       ref={setNodeRef}
       style={style}
       data-dnd-active={isDragging || undefined}
+      className={cn(
+        "group/sortable",
+        !disabled && (isDragging ? "cursor-grabbing" : "cursor-grab"),
+      )}
       {...attributes}
       {...listeners}
     >
+      {!disabled && (
+        <GripVertical
+          className={cn(
+            "absolute left-0 top-1/2 -translate-y-1/2 w-3 h-3 text-muted-foreground/50 transition-opacity duration-100 pointer-events-none z-10",
+            isDragging ? "opacity-100" : "opacity-0 group-hover/sortable:opacity-60",
+          )}
+          aria-hidden="true"
+        />
+      )}
       {children}
     </div>
   )
@@ -1446,7 +1459,8 @@ export function AgentsSubChatsSidebar({
                                     handleSubChatMouseLeave()
                                   }}
                                   className={cn(
-                                    "w-full text-left py-1.5 transition-colors duration-75 cursor-pointer group relative",
+                                    "w-full text-left py-1.5 transition-colors duration-75 group relative",
+                                    isSplitTab ? "cursor-pointer" : "cursor-grab active:cursor-grabbing",
                                     "outline-offset-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-ring/70",
                                     isMultiSelectMode ? "px-3" : "pl-2 pr-2",
                                     isMultiSelectMode ? "" : "rounded-md",
@@ -1761,7 +1775,8 @@ export function AgentsSubChatsSidebar({
                                     handleSubChatMouseLeave()
                                   }}
                                   className={cn(
-                                    "w-full text-left py-1.5 transition-colors duration-75 cursor-pointer group relative",
+                                    "w-full text-left py-1.5 transition-colors duration-75 group relative",
+                                    isSplitTab ? "cursor-pointer" : "cursor-grab active:cursor-grabbing",
                                     "outline-offset-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-ring/70",
                                     isMultiSelectMode ? "px-3" : "pl-2 pr-2",
                                     isMultiSelectMode ? "" : "rounded-md",
