@@ -24,7 +24,7 @@ import {
 } from "./lib/atoms"
 import { appStore } from "./lib/jotai-store"
 import { VSCodeThemeProvider } from "./lib/themes/theme-provider"
-import { trpc } from "./lib/trpc"
+import { trpc, trpcClient } from "./lib/trpc"
 
 /**
  * Custom Toaster that adapts to theme
@@ -195,8 +195,24 @@ export function App() {
     }
     identifyUser()
 
+    // On window unload, sweep open sub-chats — any empty ones (no messages)
+    // are auto-deleted. This complements the on-tab-close cleanup so closing a
+    // window with empty tabs still cleans them up.
+    const handleBeforeUnload = () => {
+      try {
+        const openIds = useAgentSubChatStore.getState().openSubChatIds
+        if (openIds.length === 0) return
+        // Fire-and-forget; main process IPC will queue the request.
+        trpcClient.chats.deleteEmptySubChatsByIds.mutate({ ids: openIds }).catch(() => {})
+      } catch {
+        // Swallow — this is best-effort cleanup.
+      }
+    }
+    window.addEventListener("beforeunload", handleBeforeUnload)
+
     // Cleanup on unmount
     return () => {
+      window.removeEventListener("beforeunload", handleBeforeUnload)
       shutdown()
     }
   }, [])

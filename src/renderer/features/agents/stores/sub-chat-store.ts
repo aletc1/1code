@@ -6,6 +6,7 @@ import { getWindowId } from "../../../contexts/WindowContext"
 import { clearTaskSnapshotCache } from "../ui/agent-task-tools"
 import { clearSubChatRuntimeCaches } from "./sub-chat-runtime-cleanup"
 import { getDefaultRatios, addPaneRatio, removePaneRatio } from "../atoms"
+import { trpcClient } from "../../../lib/trpc"
 
 const MAX_SPLIT_PANES = 4
 
@@ -242,10 +243,22 @@ export const useAgentSubChatStore = create<AgentSubChatStore>((set, get) => ({
     // Cleanup queue, streaming status, Chat instance, and task snapshot cache
     // to prevent memory leaks and race conditions (QueueProcessor sending to closed subChat)
     useMessageQueueStore.getState().clearQueue(subChatId)
+    const isStreaming = useStreamingStatusStore.getState().isStreaming(subChatId)
     useStreamingStatusStore.getState().clearStatus(subChatId)
     clearSubChatRuntimeCaches(subChatId)
     agentChatStore.delete(subChatId)
     clearTaskSnapshotCache(subChatId)
+
+    // Auto-delete the DB row if the sub-chat was never used (no messages).
+    // Skip if a stream is in flight — the final write would land on a deleted row.
+    if (!isStreaming) {
+      trpcClient.chats.deleteSubChatIfEmpty
+        .mutate({ id: subChatId })
+        .catch(() => {
+          // Ignore — non-fatal. The row may have been streamed-into between the
+          // gate and the request, or the sub-chat may not yet be persisted (sandbox).
+        })
+    }
   },
 
   togglePinSubChat: (subChatId) => {

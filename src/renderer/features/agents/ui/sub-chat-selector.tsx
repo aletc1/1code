@@ -275,6 +275,59 @@ export function SubChatSelector({
   const rightGradientRef = useRef<HTMLDivElement>(null)
   const truncatedTabsRef = useRef<Set<string>>(new Set())
   const searchHistoryPopoverRef = useRef<SearchHistoryPopoverRef>(null)
+  // Native HTML5 DnD state — track which tab is being dragged and which is hovered
+  const [draggedTabId, setDraggedTabId] = useState<string | null>(null)
+  const [dragOverTabId, setDragOverTabId] = useState<string | null>(null)
+  const [dragOverSide, setDragOverSide] = useState<"left" | "right" | null>(null)
+
+  const handleTabDragStart = useCallback((e: React.DragEvent, subChatId: string) => {
+    e.dataTransfer.setData("application/x-subchat-tab-id", subChatId)
+    e.dataTransfer.effectAllowed = "move"
+    setDraggedTabId(subChatId)
+  }, [])
+
+  const handleTabDragEnd = useCallback(() => {
+    setDraggedTabId(null)
+    setDragOverTabId(null)
+    setDragOverSide(null)
+  }, [])
+
+  const handleTabDragOver = useCallback((e: React.DragEvent, subChatId: string) => {
+    if (!draggedTabId || draggedTabId === subChatId) return
+    e.preventDefault()
+    e.dataTransfer.dropEffect = "move"
+    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect()
+    const side: "left" | "right" = e.clientX - rect.left < rect.width / 2 ? "left" : "right"
+    setDragOverTabId(subChatId)
+    setDragOverSide(side)
+  }, [draggedTabId])
+
+  const handleTabDrop = useCallback(
+    (e: React.DragEvent, targetId: string) => {
+      e.preventDefault()
+      const sourceId = e.dataTransfer.getData("application/x-subchat-tab-id")
+      if (!sourceId || sourceId === targetId) {
+        setDraggedTabId(null)
+        setDragOverTabId(null)
+        setDragOverSide(null)
+        return
+      }
+      const store = useAgentSubChatStore.getState()
+      const ids = store.openSubChatIds
+      const fromIdx = ids.indexOf(sourceId)
+      const toIdxBase = ids.indexOf(targetId)
+      if (fromIdx < 0 || toIdxBase < 0) return
+      const without = ids.filter((id) => id !== sourceId)
+      const targetIdxAfterRemove = without.indexOf(targetId)
+      const insertAt = dragOverSide === "right" ? targetIdxAfterRemove + 1 : targetIdxAfterRemove
+      const next = [...without.slice(0, insertAt), sourceId, ...without.slice(insertAt)]
+      store.setOpenSubChats(next)
+      setDraggedTabId(null)
+      setDragOverTabId(null)
+      setDragOverSide(null)
+    },
+    [dragOverSide],
+  )
 
   const allSubChatsById = useMemo(() => {
     const map = new Map<string, SubChatMeta>()
@@ -719,6 +772,11 @@ export function SubChatSelector({
                 // Check if this chat has a pending plan approval
                 const hasPendingPlan = pendingPlanApprovals.has(subChat.id)
 
+                const isDragOverHere = dragOverTabId === subChat.id && draggedTabId !== subChat.id
+                const isBeingDragged = draggedTabId === subChat.id
+                // Disable native DnD for split-pair tabs so auto-adjacency logic stays intact
+                const tabIsDraggable = !isInSplitPair && editingSubChatId !== subChat.id
+
                 return (
                   <ContextMenu key={subChat.id}>
                     <ContextMenuTrigger asChild>
@@ -730,6 +788,23 @@ export function SubChatSelector({
                             tabRefs.current.delete(subChat.id)
                           }
                         }}
+                        draggable={tabIsDraggable}
+                        onDragStart={(e) => {
+                          if (!tabIsDraggable) {
+                            e.preventDefault()
+                            return
+                          }
+                          handleTabDragStart(e, subChat.id)
+                        }}
+                        onDragEnd={handleTabDragEnd}
+                        onDragOver={(e) => handleTabDragOver(e, subChat.id)}
+                        onDragLeave={() => {
+                          if (dragOverTabId === subChat.id) {
+                            setDragOverTabId(null)
+                            setDragOverSide(null)
+                          }
+                        }}
+                        onDrop={(e) => handleTabDrop(e, subChat.id)}
                         onClick={(e) => {
                           e.stopPropagation()
                           e.preventDefault()
@@ -772,6 +847,10 @@ export function SubChatSelector({
                           isInSplitPair && !isActive && "bg-muted/40 hover:bg-muted/60",
                           isInSplitPair && hasSplitPrev && "-ml-1 rounded-l-none",
                           isInSplitPair && hasSplitNext && "rounded-r-none",
+                          isBeingDragged && "opacity-40",
+                          // Insertion marker (left/right edge of hovered tab)
+                          isDragOverHere && dragOverSide === "left" && "shadow-[inset_2px_0_0_0_hsl(var(--primary))]",
+                          isDragOverHere && dragOverSide === "right" && "shadow-[inset_-2px_0_0_0_hsl(var(--primary))]",
                         )}
                       >
                         {/* Icon: question icon (priority) OR loading spinner OR mode icon with badge (hide when editing) */}

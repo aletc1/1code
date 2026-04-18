@@ -76,6 +76,10 @@ export const subChats = sqliteTable("sub_chats", {
   streamId: text("stream_id"), // Track in-progress streams
   mode: text("mode").notNull().default("agent"), // "plan" | "agent"
   messages: text("messages").notNull().default("[]"), // JSON array
+  // Cached file stats — kept in sync by writers, read by getFileStats to avoid JSON parse on every query
+  fileStatsAdditions: integer("file_stats_additions").notNull().default(0),
+  fileStatsDeletions: integer("file_stats_deletions").notNull().default(0),
+  fileStatsFileCount: integer("file_stats_file_count").notNull().default(0),
   createdAt: integer("created_at", { mode: "timestamp" }).$defaultFn(
     () => new Date(),
   ),

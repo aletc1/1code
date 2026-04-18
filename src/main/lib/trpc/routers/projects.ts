@@ -1,15 +1,18 @@
 import { z } from "zod"
 import { router, publicProcedure } from "../index"
-import { getDatabase, projects } from "../../db"
-import { eq, desc } from "drizzle-orm"
+import { chats, getDatabase, projects, subChats } from "../../db"
+import { and, eq, desc, isNotNull } from "drizzle-orm"
 import { dialog, BrowserWindow, app } from "electron"
 import { basename, join } from "path"
 import { exec } from "node:child_process"
 import { promisify } from "node:util"
 import { existsSync } from "node:fs"
-import { mkdir, copyFile, unlink } from "node:fs/promises"
+import { mkdir, copyFile, readdir, rm, unlink } from "node:fs/promises"
+import { homedir } from "node:os"
 import { extname } from "node:path"
-import { getGitRemoteInfo } from "../../git"
+import { getGitRemoteInfo, removeWorktree, sanitizeProjectName } from "../../git"
+import { isPathInsideWorktreeRoot } from "../../git/worktree"
+import { terminalManager } from "../../terminal/manager"
 import { trackProjectOpened } from "../../analytics"
 import { getLaunchDirectory } from "../../cli"
 
@@ -186,12 +189,57 @@ export const projectsRouter = router({
     }),
 
   /**
-   * Delete a project and all its chats
+   * Delete a project and all its chats.
+   * Cascades worktree directory cleanup so disk doesn't accumulate orphans.
    */
   delete: publicProcedure
     .input(z.object({ id: z.string() }))
-    .mutation(({ input }) => {
+    .mutation(async ({ input }) => {
       const db = getDatabase()
+      const project = db.select().from(projects).where(eq(projects.id, input.id)).get()
+      if (!project) {
+        return null
+      }
+
+      // Find chats with real worktrees (branch is set; project-path-only chats have no worktree)
+      const childChats = db
+        .select()
+        .from(chats)
+        .where(
+          and(
+            eq(chats.projectId, input.id),
+            isNotNull(chats.worktreePath),
+            isNotNull(chats.branch),
+          ),
+        )
+        .all()
+
+      // Kill any terminals tied to those chats and remove the worktrees in parallel
+      await Promise.allSettled(
+        childChats.map(async (chat) => {
+          if (chat.worktreePath) {
+            terminalManager.killByWorkspaceId(chat.id).catch(() => {})
+            await removeWorktree(project.path, chat.worktreePath)
+          }
+
+          // Delete sub-chat sub-directories (if any) defensively
+          db.delete(subChats).where(eq(subChats.chatId, chat.id)).run()
+        }),
+      )
+
+      // Remove the project's slug directory if empty (best-effort)
+      const slugDir = join(homedir(), ".21st", "worktrees", sanitizeProjectName(project.name))
+      if (isPathInsideWorktreeRoot(slugDir)) {
+        try {
+          const entries = await readdir(slugDir)
+          if (entries.length === 0) {
+            await rm(slugDir, { recursive: true, force: true })
+          }
+        } catch {
+          // Slug dir doesn't exist or can't be read — non-fatal
+        }
+      }
+
       return db
         .delete(projects)
         .where(eq(projects.id, input.id))

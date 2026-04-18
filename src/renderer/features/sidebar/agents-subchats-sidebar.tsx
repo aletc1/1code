@@ -92,6 +92,21 @@ import { useHotkeys } from "react-hotkeys-hook"
 import { useSubChatDraftsCache, getSubChatDraftKey } from "../agents/lib/drafts"
 import { Checkbox } from "../../components/ui/checkbox"
 import { TypewriterText } from "../../components/ui/typewriter-text"
+import {
+  DndContext,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  closestCenter,
+  type DragEndEvent,
+} from "@dnd-kit/core"
+import {
+  SortableContext,
+  useSortable,
+  verticalListSortingStrategy,
+  arrayMove,
+} from "@dnd-kit/sortable"
+import { CSS } from "@dnd-kit/utilities"
 
 // Isolated Search History Popover for sidebar - prevents parent re-renders when popover opens/closes
 interface SidebarSearchHistoryPopoverProps {
@@ -197,6 +212,47 @@ interface AgentsSubChatsSidebarProps {
   agentName?: string
 }
 
+/**
+ * Wrapper that makes a sub-chat row draggable via @dnd-kit.
+ * Drag is disabled for split-pair tabs so the auto-adjacency logic in `openSubChats`
+ * doesn't fight the user-defined order.
+ *
+ * Sets `data-dnd-active` while dragging so consumers can skip hover effects, and
+ * uses an `activationConstraint` of 4px so single clicks still pass through.
+ */
+function SortableSubChatRow({
+  id,
+  disabled,
+  children,
+}: {
+  id: string
+  disabled?: boolean
+  children: React.ReactNode
+}) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
+    useSortable({ id, disabled })
+
+  const style: React.CSSProperties = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.5 : 1,
+    zIndex: isDragging ? 10 : undefined,
+    position: "relative",
+  }
+
+  return (
+    <div
+      ref={setNodeRef}
+      style={style}
+      data-dnd-active={isDragging || undefined}
+      {...attributes}
+      {...listeners}
+    >
+      {children}
+    </div>
+  )
+}
+
 export function AgentsSubChatsSidebar({
   onClose,
   isMobile = false,
@@ -217,6 +273,7 @@ export function AgentsSubChatsSidebar({
     addToSplit,
     removeFromSplit,
     closeSplit,
+    setOpenSubChats,
   } = useAgentSubChatStore(
     useShallow((state) => ({
       activeSubChatId: state.activeSubChatId,
@@ -229,7 +286,30 @@ export function AgentsSubChatsSidebar({
       addToSplit: state.addToSplit,
       removeFromSplit: state.removeFromSplit,
       closeSplit: state.closeSplit,
+      setOpenSubChats: state.setOpenSubChats,
     }))
+  )
+
+  // DnD sensors. 4px activation distance so a click doesn't get hijacked into a drag.
+  const dndSensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
+  )
+
+  // Handles drag-end: rebuild openSubChatIds with the new order.
+  // Maps the in-section reorder back to the global openSubChatIds list (search-aware).
+  const handleSidebarDragEnd = useCallback(
+    (event: DragEndEvent) => {
+      const { active, over } = event
+      if (!over || active.id === over.id) return
+      const activeId = String(active.id)
+      const overId = String(over.id)
+      const fromIdx = openSubChatIds.indexOf(activeId)
+      const toIdx = openSubChatIds.indexOf(overId)
+      if (fromIdx < 0 || toIdx < 0) return
+      const newIds = arrayMove(openSubChatIds, fromIdx, toIdx)
+      setOpenSubChats(newIds)
+    },
+    [openSubChatIds, setOpenSubChats],
   )
   const [loadingSubChats] = useAtom(loadingSubChatsAtom)
   const subChatFiles = useAtomValue(subChatFilesAtom)
@@ -349,16 +429,12 @@ export function AgentsSubChatsSidebar({
     return map
   }, [allSubChats])
 
-  // Map open IDs to metadata and sort by updated_at (most recent first)
+  // Map open IDs to metadata. Order follows openSubChatIds (user-controlled via DnD)
+  // rather than auto-sorting by updated_at — manual reorder must stick.
   const openSubChats = useMemo(() => {
     const chats = openSubChatIds
       .map((id) => allSubChatsById.get(id))
       .filter((sc): sc is SubChatMeta => !!sc)
-      .sort((a, b) => {
-        const aT = new Date(a.updated_at || a.created_at || "0").getTime()
-        const bT = new Date(b.updated_at || b.created_at || "0").getTime()
-        return bT - aT // Most recent first
-      })
 
     if (splitPaneIds.length < 2) return chats
 
@@ -714,26 +790,12 @@ export function AgentsSubChatsSidebar({
     [renamingSubChat, renameMutation, setJustCreatedIds],
   )
 
-  const handleCreateNew = async () => {
+  const handleCreateNew = () => {
     if (!parentChatId) return
 
     const store = useAgentSubChatStore.getState()
-
-    let newId: string
-
-    if (chatSourceMode === "sandbox") {
-      // Sandbox mode: lazy creation (web app pattern)
-      // Sub-chat will be persisted on first message via RemoteChatTransport UPSERT
-      newId = crypto.randomUUID()
-    } else {
-      // Local mode: create sub-chat in DB first to get the real ID
-      const newSubChat = await trpcClient.chats.createSubChat.mutate({
-        chatId: parentChatId,
-        name: "New Chat",
-        mode: defaultAgentMode,
-      })
-      newId = newSubChat.id
-    }
+    const newId = crypto.randomUUID()
+    const capturedParentChatId = parentChatId
 
     // Track this subchat as just created for typewriter effect
     setJustCreatedIds((prev) => new Set([...prev, newId]))
@@ -741,7 +803,7 @@ export function AgentsSubChatsSidebar({
     // Initialize atomFamily mode for the new sub-chat
     appStore.set(subChatModeAtomFamily(newId), defaultAgentMode)
 
-    // Add to allSubChats with placeholder name
+    // Add to allSubChats with placeholder name (optimistic — UI updates instantly)
     store.addToAllSubChats({
       id: newId,
       name: "New Chat",
@@ -752,6 +814,24 @@ export function AgentsSubChatsSidebar({
     // Add to open tabs and set as active
     store.addToOpenSubChats(newId)
     store.setActiveSubChat(newId)
+
+    if (chatSourceMode !== "sandbox") {
+      // Local mode: persist to DB in background. On failure, roll back the optimistic insert.
+      // Sandbox mode persists lazily on first message via RemoteChatTransport UPSERT.
+      // Do NOT pass `name` — leave it NULL in DB so the app-quit cleanup can
+      // recognize never-named, never-used sub-chats. UI displays "New Chat" via fallback.
+      trpcClient.chats.createSubChat
+        .mutate({
+          id: newId,
+          chatId: capturedParentChatId,
+          mode: defaultAgentMode,
+        })
+        .catch((error) => {
+          console.error("[handleCreateNew] Failed to create sub-chat:", error)
+          useAgentSubChatStore.getState().removeFromOpenSubChats(newId)
+          toast.error("Failed to create chat")
+        })
+    }
   }
 
   const handleSelectFromHistory = useCallback((subChat: SubChatMeta) => {
@@ -1248,6 +1328,11 @@ export function AgentsSubChatsSidebar({
                 <div
                   className={cn("mb-4", isMultiSelectMode ? "px-0" : "-mx-1")}
                 >
+                  <DndContext
+                    sensors={dndSensors}
+                    collisionDetection={closestCenter}
+                    onDragEnd={handleSidebarDragEnd}
+                  >
                   {/* Pinned section */}
                   {pinnedChats.length > 0 && (
                     <>
@@ -1262,6 +1347,10 @@ export function AgentsSubChatsSidebar({
                         </h3>
                       </div>
                       <div className="list-none p-0 m-0 mb-3">
+                        <SortableContext
+                          items={pinnedChats.map((c) => c.id)}
+                          strategy={verticalListSortingStrategy}
+                        >
                         {pinnedChats.map((subChat) => {
                           const isSubChatLoading = loadingChatIds.has(
                             subChat.id,
@@ -1305,7 +1394,12 @@ export function AgentsSubChatsSidebar({
                               : null
 
                           return (
-                            <ContextMenu key={subChat.id}>
+                            <SortableSubChatRow
+                              key={subChat.id}
+                              id={subChat.id}
+                              disabled={isSplitTab}
+                            >
+                            <ContextMenu>
                               <ContextMenuTrigger asChild>
                                 <div
                                   data-subchat-index={globalIndex}
@@ -1546,8 +1640,10 @@ export function AgentsSubChatsSidebar({
                                 />
                               )}
                             </ContextMenu>
+                            </SortableSubChatRow>
                           )
                         })}
+                        </SortableContext>
                       </div>
                     </>
                   )}
@@ -1566,6 +1662,10 @@ export function AgentsSubChatsSidebar({
                         </h3>
                       </div>
                       <div className="list-none p-0 m-0">
+                        <SortableContext
+                          items={unpinnedChats.map((c) => c.id)}
+                          strategy={verticalListSortingStrategy}
+                        >
                         {unpinnedChats.map((subChat) => {
                           const isSubChatLoading = loadingChatIds.has(
                             subChat.id,
@@ -1609,7 +1709,12 @@ export function AgentsSubChatsSidebar({
                               : null
 
                           return (
-                            <ContextMenu key={subChat.id}>
+                            <SortableSubChatRow
+                              key={subChat.id}
+                              id={subChat.id}
+                              disabled={isSplitTab}
+                            >
+                            <ContextMenu>
                               <ContextMenuTrigger asChild>
                                 <div
                                   data-subchat-index={globalIndex}
@@ -1850,11 +1955,14 @@ export function AgentsSubChatsSidebar({
                                 />
                               )}
                             </ContextMenu>
+                            </SortableSubChatRow>
                           )
                         })}
+                        </SortableContext>
                       </div>
                     </>
                   )}
+                  </DndContext>
                 </div>
               ) : searchQuery.trim() ? (
                 <div className="flex items-center justify-center h-full text-sm text-muted-foreground p-4 text-center">
