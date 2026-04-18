@@ -253,14 +253,17 @@ export const ArchivePopover = memo(function ArchivePopover({ trigger }: ArchiveP
     },
   )
 
-  // Remote archived chats (always fetch)
-  const { data: remoteArchivedChats, isLoading: isRemoteLoading } = useRemoteArchivedChats()
+  // Remote archived chats (lazy — only when popover is open)
+  const { data: remoteArchivedChats, isLoading: isRemoteLoading } = useRemoteArchivedChats(open)
 
   // Loading if either is loading
   const isLoading = isLocalLoading || isRemoteLoading
 
-  // Fetch all projects for git info (for local chats)
-  const { data: projects } = trpc.projects.list.useQuery(undefined)
+  // Fetch all projects for git info (for local chats) — lazy on open
+  const { data: projects } = trpc.projects.list.useQuery(undefined, {
+    enabled: open,
+    staleTime: 5 * 60 * 1000,
+  })
 
   // Collect chat IDs for file stats query (only local chats)
   const archivedChatIds = useMemo(() => {
@@ -508,7 +511,6 @@ export const ArchivePopover = memo(function ArchivePopover({ trigger }: ArchiveP
         side="right"
         align="end"
         sideOffset={8}
-        forceDark={false}
         className="w-[250px] h-[400px] p-0 flex flex-col overflow-hidden"
         onKeyDown={handleKeyDown}
         tabIndex={-1}

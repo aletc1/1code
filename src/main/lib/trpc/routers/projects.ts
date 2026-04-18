@@ -1,7 +1,7 @@
 import { z } from "zod"
 import { router, publicProcedure } from "../index"
 import { chats, getDatabase, projects, subChats } from "../../db"
-import { and, eq, desc, isNotNull } from "drizzle-orm"
+import { and, eq, desc, inArray, isNotNull } from "drizzle-orm"
 import { dialog, BrowserWindow, app } from "electron"
 import { basename, join } from "path"
 import { exec } from "node:child_process"
@@ -15,6 +15,7 @@ import { isPathInsideWorktreeRoot } from "../../git/worktree"
 import { terminalManager } from "../../terminal/manager"
 import { trackProjectOpened } from "../../analytics"
 import { getLaunchDirectory } from "../../cli"
+import { abortClaudeSessionsForSubChats } from "./claude"
 
 const execAsync = promisify(exec)
 
@@ -201,8 +202,30 @@ export const projectsRouter = router({
         return null
       }
 
+      // Abort any in-flight Claude sessions for the project's sub-chats so cleanup
+      // (worktree rm, FK cascade) doesn't race with active streams.
+      const childChatIds = db
+        .select({ id: chats.id })
+        .from(chats)
+        .where(eq(chats.projectId, input.id))
+        .all()
+        .map((row) => row.id)
+
+      if (childChatIds.length > 0) {
+        const subChatIds = db
+          .select({ id: subChats.id })
+          .from(subChats)
+          .where(inArray(subChats.chatId, childChatIds))
+          .all()
+          .map((row) => row.id)
+
+        if (subChatIds.length > 0) {
+          abortClaudeSessionsForSubChats(subChatIds)
+        }
+      }
+
       // Find chats with real worktrees (branch is set; project-path-only chats have no worktree)
-      const childChats = db
+      const childChatsWithWorktree = db
         .select()
         .from(chats)
         .where(
@@ -216,14 +239,11 @@ export const projectsRouter = router({
 
       // Kill any terminals tied to those chats and remove the worktrees in parallel
       await Promise.allSettled(
-        childChats.map(async (chat) => {
+        childChatsWithWorktree.map(async (chat) => {
           if (chat.worktreePath) {
             terminalManager.killByWorkspaceId(chat.id).catch(() => {})
             await removeWorktree(project.path, chat.worktreePath)
           }
-
-          // Delete sub-chat sub-directories (if any) defensively
-          db.delete(subChats).where(eq(subChats.chatId, chat.id)).run()
         }),
       )
 

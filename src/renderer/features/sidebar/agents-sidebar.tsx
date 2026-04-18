@@ -40,7 +40,7 @@ import {
 } from "../../lib/hooks/use-remote-chats"
 import { usePrefetchLocalChat } from "../../lib/hooks/use-prefetch-local-chat"
 import { ArchivePopover } from "../agents/ui/archive-popover"
-import { ChevronDown, MoreHorizontal, Columns3, ArrowUpRight } from "lucide-react"
+import { ChevronDown, MoreHorizontal, Columns3, ArrowUpRight, BarChart3 } from "lucide-react"
 import { useQuery } from "@tanstack/react-query"
 import { remoteTrpc } from "../../lib/remote-trpc"
 // import { useRouter } from "next/navigation" // Desktop doesn't use next/navigation
@@ -1112,6 +1112,36 @@ const KanbanButton = memo(function KanbanButton() {
         Kanban View
         {openKanbanHotkey && <Kbd>{openKanbanHotkey}</Kbd>}
       </TooltipContent>
+    </Tooltip>
+  )
+})
+
+// Isolated Usage Button - navigates to the Usage statistics page
+const UsageButton = memo(function UsageButton() {
+  const setSelectedChatId = useSetAtom(selectedAgentChatIdAtom)
+  const setSelectedDraftId = useSetAtom(selectedDraftIdAtom)
+  const setShowNewChatForm = useSetAtom(showNewChatFormAtom)
+  const setDesktopView = useSetAtom(desktopViewAtom)
+
+  const handleClick = useCallback(() => {
+    setSelectedChatId(null)
+    setSelectedDraftId(null)
+    setShowNewChatForm(false)
+    setDesktopView("usage")
+  }, [setSelectedChatId, setSelectedDraftId, setShowNewChatForm, setDesktopView])
+
+  return (
+    <Tooltip delayDuration={500}>
+      <TooltipTrigger asChild>
+        <button
+          type="button"
+          onClick={handleClick}
+          className="flex items-center justify-center h-7 w-7 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-[background-color,color,transform] duration-150 ease-out active:scale-[0.97] outline-offset-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-ring/70"
+        >
+          <BarChart3 className="h-4 w-4" />
+        </button>
+      </TooltipTrigger>
+      <TooltipContent>Usage</TooltipContent>
     </Tooltip>
   )
 })
@@ -3461,12 +3491,16 @@ export function AgentsSidebar({
 
                 {/* Archive Button - isolated component to prevent sidebar re-renders */}
                 <ArchiveSection archivedChatsCount={archivedChatsCount} />
+
+                {/* Usage Button - opens the Usage statistics page */}
+                <UsageButton />
               </div>
 
               <div className="flex-1" />
             </div>
 
-            {/* Feedback Button */}
+            {/* UPDATES-DISABLED: re-enable to restore Feedback button */}
+            {/*
             <ButtonCustom
               onClick={() => window.open(FEEDBACK_URL, "_blank")}
               variant="outline"
@@ -3478,6 +3512,7 @@ export function AgentsSidebar({
             >
               <span className="text-sm font-medium">Feedback</span>
             </ButtonCustom>
+            */}
           </motion.div>
         )}
       </AnimatePresence>

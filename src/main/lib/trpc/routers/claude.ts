@@ -2,6 +2,7 @@ import { observable } from "@trpc/server/observable"
 import { eq } from "drizzle-orm"
 import { app, BrowserWindow, safeStorage } from "electron"
 import * as fs from "fs/promises"
+import { existsSync } from "node:fs"
 import * as os from "os"
 import path from "path"
 import { z } from "zod"
@@ -275,6 +276,18 @@ export function abortAllClaudeSessions(): void {
     controller.abort()
   }
   activeSessions.clear()
+}
+
+/** Abort Claude sessions for a specific set of sub-chat ids */
+export function abortClaudeSessionsForSubChats(subChatIds: string[]): void {
+  for (const subChatId of subChatIds) {
+    const controller = activeSessions.get(subChatId)
+    if (controller) {
+      console.log(`[claude] Aborting session ${subChatId} (workspace removed)`)
+      controller.abort()
+      activeSessions.delete(subChatId)
+    }
+  }
 }
 
 // In-memory cache of working MCP server names (resets on app restart)
@@ -811,7 +824,9 @@ export const claudeRouter = router({
             baseUrl: z.string().min(1),
           })
           .optional(),
-        maxThinkingTokens: z.number().optional(), // Enable extended thinking
+        effort: z
+          .enum(["low", "medium", "high", "xhigh", "max"])
+          .optional(), // Thinking/reasoning effort level
         images: z.array(imageAttachmentSchema).optional(), // Image attachments
         historyEnabled: z.boolean().optional(),
         offlineModeEnabled: z.boolean().optional(), // Whether offline mode (Ollama) is enabled in settings
@@ -896,11 +911,34 @@ export const claudeRouter = router({
             const db = getDatabase()
 
             // 1. Get existing messages from DB
-            const existing = db
+            let existing = db
               .select()
               .from(subChats)
               .where(eq(subChats.id, input.subChatId))
               .get()
+
+            // Safety net: if the sub-chat row doesn't exist yet (renderer sent
+            // `send` before `createSubChat` round-tripped), backfill it instead
+            // of silently no-op'ing the UPDATE below.
+            if (!existing) {
+              console.warn(
+                `[claude] sub-chat ${input.subChatId} missing on send — auto-creating`,
+              )
+              db.insert(subChats)
+                .values({
+                  id: input.subChatId,
+                  chatId: input.chatId,
+                  mode: input.mode,
+                  messages: "[]",
+                })
+                .run()
+              existing = db
+                .select()
+                .from(subChats)
+                .where(eq(subChats.id, input.subChatId))
+                .get()
+            }
+
             const existingMessages = JSON.parse(existing?.messages || "[]")
             const existingSessionId = existing?.sessionId || null
 
@@ -1500,7 +1538,38 @@ export const claudeRouter = router({
               }
             }
 
-            const resolvedModel = finalCustomConfig?.model || input.model
+            const rawResolvedModel = finalCustomConfig?.model || input.model
+            // 1M context: the UI exposes `opus[1m]` and `sonnet[1m]` as
+            // distinct models, but the Claude CLI only understands the base
+            // shortcuts (`opus`, `sonnet`). Strip the `[1m]` suffix for the
+            // model field and enable the shared beta via ANTHROPIC_BETAS on
+            // the child env.
+            const has1MSuffix =
+              typeof rawResolvedModel === "string" &&
+              rawResolvedModel.endsWith("[1m]")
+            const resolvedModel = has1MSuffix
+              ? rawResolvedModel!.slice(0, -4)
+              : rawResolvedModel
+            if (has1MSuffix) {
+              const envAsRecord = finalEnv as Record<string, string>
+              const existingBetas = envAsRecord.ANTHROPIC_BETAS
+              const betaSlug = "context-1m-2025-08-07"
+              const merged = existingBetas
+                ? Array.from(
+                    new Set([
+                      ...existingBetas
+                        .split(",")
+                        .map((s: string) => s.trim())
+                        .filter(Boolean),
+                      betaSlug,
+                    ]),
+                  ).join(",")
+                : betaSlug
+              envAsRecord.ANTHROPIC_BETAS = merged
+              console.log(
+                `[claude] 1M context enabled for ${resolvedModel} — ANTHROPIC_BETAS=${merged}`,
+              )
+            }
 
             // DEBUG: If using Ollama, test if it's actually responding
             if (isUsingOllama && finalCustomConfig) {
@@ -1778,7 +1847,7 @@ ${prompt}
                 includePartialMessages: true,
                 // Load skills from project and user directories (skip for Ollama - not supported)
                 ...(!isUsingOllama && {
-                  settingSources: ["project" as const, "user" as const],
+                  settingSources: ["project" as const, "local" as const, "user" as const],
                 }),
                 canUseTool: async (
                   toolName: string,
@@ -1985,26 +2054,21 @@ ${prompt}
                 pathToClaudeCodeExecutable: claudeBinaryPath,
                 // Session handling: For Ollama, use resume with session ID to maintain history
                 // For Claude API, use resume with rollback/fork support
-                ...(resumeSessionId && {
-                  resume: resumeSessionId,
-                  // Fork support - resume at specific point and create new session
-                  ...(shouldForkResume && forkResumeAtUuid && !isUsingOllama
-                    ? {
-                        resumeSessionAt: forkResumeAtUuid,
-                        forkSession: true,
-                      }
-                    : // Rollback support - resume at specific message UUID (from DB)
-                      resumeAtUuid && !isUsingOllama
-                      ? { resumeSessionAt: resumeAtUuid }
-                      : { continue: true }),
-                }),
-                // For first message in chat (no session ID yet), use continue mode
-                ...(!resumeSessionId && { continue: true }),
+                // resume is mutually exclusive with continue (SDK contract)
+                ...(resumeSessionId
+                  ? {
+                      resume: resumeSessionId,
+                      // Fork support - resume at specific point and create new session
+                      ...(shouldForkResume && forkResumeAtUuid && !isUsingOllama
+                        ? { resumeSessionAt: forkResumeAtUuid, forkSession: true }
+                        : // Rollback support - resume at specific message UUID (from DB)
+                          resumeAtUuid && !isUsingOllama
+                          ? { resumeSessionAt: resumeAtUuid }
+                          : {}),
+                    }
+                  : { continue: true }),
                 ...(resolvedModel && { model: resolvedModel }),
-                // fallbackModel: "claude-opus-4-5-20251101",
-                ...(input.maxThinkingTokens && {
-                  maxThinkingTokens: input.maxThinkingTokens,
-                }),
+                ...(input.effort && { effort: input.effort }),
               },
             }
 
@@ -2048,6 +2112,21 @@ ${prompt}
 
               // Plan mode: track ExitPlanMode to stop after plan is complete
               let exitPlanModeToolCallId: string | null = null
+
+              // Stream wedge recovery: abort if no first chunk arrives within 90s.
+              // SDK hangs have been observed with no crash/no error — detect them
+              // instead of letting the UI sit on a pending stream forever.
+              let streamWedged = false
+              const WEDGE_TIMEOUT_MS = 90_000
+              const wedgeTimer = setTimeout(() => {
+                if (!firstMessageReceived) {
+                  streamWedged = true
+                  console.error(
+                    `[claude] Stream wedged — no data in ${WEDGE_TIMEOUT_MS / 1000}s, aborting`,
+                  )
+                  abortController.abort()
+                }
+              }, WEDGE_TIMEOUT_MS)
 
               if (isUsingOllama) {
                 console.log(`[Ollama] ===== STARTING STREAM ITERATION =====`)
@@ -2105,6 +2184,7 @@ ${prompt}
                   // Warn if SDK initialization is slow (MCP delay)
                   if (!firstMessageReceived) {
                     firstMessageReceived = true
+                    clearTimeout(wedgeTimer)
                     const timeToFirstMessage = Date.now() - streamIterationStart
                     if (isUsingOllama) {
                       console.log(
@@ -2260,6 +2340,7 @@ ${prompt}
                           rawErrorCode,
                           sessionId: msgAny.session_id,
                           messageId: msgAny.message?.id,
+                          model: rawResolvedModel,
                         },
                       } as UIMessageChunk)
                     }
@@ -2434,6 +2515,8 @@ ${prompt}
                   }
                 }
 
+                clearTimeout(wedgeTimer)
+
                 // Warn if stream yielded no messages (offline mode issue)
                 const streamDuration = Date.now() - streamIterationStart
                 if (isUsingOllama) {
@@ -2480,6 +2563,7 @@ ${prompt}
                 }
               } catch (streamError) {
                 // This catches errors during streaming (like process exit)
+                clearTimeout(wedgeTimer)
                 const err = streamError as Error
                 const stderrOutput = stderrLines.join("\n")
 
@@ -2507,7 +2591,10 @@ ${prompt}
                   "No conversation found with session ID",
                 )
 
-                if (isSessionNotFound) {
+                if (streamWedged) {
+                  errorContext = `Claude stream wedged — no data received in ${WEDGE_TIMEOUT_MS / 1000}s. Try again.`
+                  errorCategory = "STREAM_WEDGE"
+                } else if (isSessionNotFound) {
                   // Clear the invalid session ID from database so next attempt starts fresh
                   console.log(
                     `[claude] Session not found - clearing invalid sessionId from database`,
@@ -2523,8 +2610,15 @@ ${prompt}
                   errorContext = "Claude Code process crashed"
                   errorCategory = "PROCESS_CRASH"
                 } else if (err.message?.includes("ENOENT")) {
-                  errorContext = "Required executable not found in PATH"
-                  errorCategory = "EXECUTABLE_NOT_FOUND"
+                  // If the bundled Claude binary is missing, surface a clear
+                  // recovery path instead of a generic PATH error.
+                  if (!existsSync(claudeBinaryPath)) {
+                    errorContext = `Claude binary not found at ${claudeBinaryPath}. Run \`bun run claude:download\` and restart the app.`
+                    errorCategory = "CLAUDE_BINARY_MISSING"
+                  } else {
+                    errorContext = "Required executable not found in PATH"
+                    errorCategory = "EXECUTABLE_NOT_FOUND"
+                  }
                 } else if (
                   err.message?.includes("authentication") ||
                   err.message?.includes("401")
@@ -2575,8 +2669,9 @@ ${prompt}
                   }
                 }
 
-                // Send error with stderr output to frontend (only if not aborted by user)
-                if (!abortController.signal.aborted) {
+                // Send error with stderr output to frontend (only if not aborted by user).
+                // Wedge-triggered aborts are NOT user aborts — surface them.
+                if (!abortController.signal.aborted || streamWedged) {
                   safeEmit({
                     type: "error",
                     errorText: stderrOutput
@@ -2588,6 +2683,7 @@ ${prompt}
                       cwd: input.cwd,
                       mode: input.mode,
                       stderr: stderrOutput || "(no stderr captured)",
+                      model: rawResolvedModel,
                     },
                   } as UIMessageChunk)
                 }

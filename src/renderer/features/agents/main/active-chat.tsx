@@ -147,6 +147,7 @@ import {
   subChatCodexThinkingAtomFamily,
   subChatModelIdAtomFamily,
   subChatModeAtomFamily,
+  subChatProviderOverridesAtom,
   suppressInputFocusAtom,
   undoStackAtom,
   workspaceDiffCacheAtomFamily,
@@ -175,6 +176,7 @@ import {
   getSubChatDraftFull
 } from "../lib/drafts"
 import { IPCChatTransport } from "../lib/ipc-chat-transport"
+import { applyModeDefaultModel } from "../lib/model-switching"
 import {
   createQueueItem, createTextPreview, generateQueueId,
   toQueuedFile,
@@ -3154,6 +3156,9 @@ const ChatViewInner = memo(function ChatViewInner({
     // Update atomFamily state (for UI) - this also syncs to store via effect
     setSubChatMode("agent")
 
+    // Autoswitch to the Agent-mode default model before sending
+    applyModeDefaultModel(subChatId, "agent")
+
     // Enable auto-scroll and immediately scroll to bottom
     shouldAutoScrollRef.current = true
     scrollToBottom()
@@ -3897,6 +3902,13 @@ const ChatViewInner = memo(function ChatViewInner({
       const builtinNames = new Set(
         BUILTIN_SLASH_COMMANDS.map((cmd) => cmd.name),
       )
+      // Autoswitch to the Review-mode default model for review-type commands.
+      // Done transiently: we set the model before the transport reads it; we
+      // don't restore, so the chat input selector remains visibly on the
+      // review model until the next mode change or manual pick.
+      if (commandName === "review" || commandName === "security-review") {
+        applyModeDefaultModel(subChatId, "review")
+      }
       if (!builtinNames.has(commandName)) {
         try {
           const commands = await trpcClient.commands.list.query({
@@ -4178,7 +4190,7 @@ const ChatViewInner = memo(function ChatViewInner({
     removeFromQueue(subChatId, itemId)
   }, [subChatId, removeFromQueue])
 
-  // Force send - stop stream and send immediately, bypassing queue (Opt+Enter)
+  // Force send - stop stream and send immediately, bypassing queue (Opt+Shift+Enter)
   const handleForceSend = useCallback(async () => {
     // Block sending while sandbox is still being set up
     if (sandboxSetupStatus !== "ready") {
@@ -4218,6 +4230,10 @@ const ChatViewInner = memo(function ChatViewInner({
       const builtinNames = new Set(
         BUILTIN_SLASH_COMMANDS.map((cmd) => cmd.name),
       )
+      // Autoswitch to the Review-mode default model for review-type commands.
+      if (commandName === "review" || commandName === "security-review") {
+        applyModeDefaultModel(subChatId, "review")
+      }
       if (!builtinNames.has(commandName)) {
         try {
           const commands = await trpcClient.commands.list.query({
@@ -4647,7 +4663,7 @@ const ChatViewInner = memo(function ChatViewInner({
           />
           {/* Workspace subtitle: repo • branch */}
           {(workspaceRepoName || workspaceBranch) && (
-            <div className="max-w-2xl mx-auto px-4">
+            <div className="max-w-5xl mx-auto px-4">
               <span className="text-xs text-muted-foreground/50 truncate block">
                 {[workspaceRepoName, workspaceBranch].filter(Boolean).join(" • ")}
               </span>
@@ -4692,7 +4708,7 @@ const ChatViewInner = memo(function ChatViewInner({
       >
         <div
           ref={contentWrapperRef}
-          className="px-2 max-w-2xl mx-auto -mb-4 space-y-4"
+          className="px-2 max-w-5xl mx-auto -mb-4 space-y-4"
           style={{
             paddingBottom: "32px",
           }}
@@ -4724,7 +4740,7 @@ const ChatViewInner = memo(function ChatViewInner({
       {/* User questions panel - shows for both live (pending) and expired (timed out) questions */}
       {displayQuestions && (
         <div className="px-4 relative z-20">
-          <div className="w-full px-2 max-w-2xl mx-auto">
+          <div className="w-full px-2 max-w-5xl mx-auto">
             <AgentUserQuestion
               ref={questionRef}
               pendingQuestions={displayQuestions}
@@ -4739,7 +4755,7 @@ const ChatViewInner = memo(function ChatViewInner({
       {/* Stacked cards container - queue + status */}
       {shouldShowStackedCards && (
           <div className="px-2 -mb-6 relative z-10">
-            <div className="w-full max-w-2xl mx-auto px-2">
+            <div className="w-full max-w-5xl mx-auto px-2">
               {/* Queue indicator card - top card */}
               {queue.length > 0 && (
                 <AgentQueueIndicator
@@ -5301,14 +5317,13 @@ export function ChatView({
       splitPaneIds: state.splitPaneIds,
     }))
   )
-  const [
-    subChatProviderOverrides,
-    setSubChatProviderOverrides,
-  ] = useState<Record<string, "claude-code" | "codex">>({})
+  const [subChatProviderOverrides, setSubChatProviderOverrides] = useAtom(
+    subChatProviderOverridesAtom,
+  )
 
   useEffect(() => {
     setSubChatProviderOverrides({})
-  }, [chatId])
+  }, [chatId, setSubChatProviderOverrides])
 
   // Clear sub-chat "unseen changes" indicator when sub-chat becomes active
   useEffect(() => {
@@ -6172,7 +6187,7 @@ Make sure to preserve all functionality from both branches when resolving confli
     onRefresh: handleCommitChangesRefresh,
   })
 
-  const { push: pushBranch, isPending: isPushing } = usePushAction({
+  const { push: pushBranch, isPending: isPushing, dialog: pushDialog } = usePushAction({
     worktreePath,
     hasUpstream: gitStatus?.hasUpstream ?? true,
     onSuccess: handleCommitChangesRefresh,
@@ -7445,6 +7460,7 @@ Make sure to preserve all functionality from both branches when resolving confli
   return (
     <FileOpenProvider onOpenFile={setFileViewerPath}>
     <TextSelectionProvider>
+    {pushDialog}
     {/* File Search Dialog (Cmd+P) */}
     {worktreePath && (
       <FileSearchDialog
@@ -7533,6 +7549,10 @@ Make sure to preserve all functionality from both branches when resolving confli
                               onClick={handleOpenLocally}
                               disabled={isImporting}
                               className="h-6 px-2 gap-1.5 text-xs font-medium ml-2"
+                              style={{
+                                // @ts-expect-error - WebKit-specific property
+                                WebkitAppRegion: "no-drag",
+                              }}
                             >
                               {isImporting ? (
                                 <IconSpinner className="h-3 w-3 animate-spin" />
@@ -7564,6 +7584,10 @@ Make sure to preserve all functionality from both branches when resolving confli
                           onClick={() => setIsPreviewSidebarOpen(true)}
                           className="h-6 w-6 p-0 hover:bg-foreground/10 transition-colors text-foreground flex-shrink-0 rounded-md ml-2"
                           aria-label="Open preview"
+                          style={{
+                            // @ts-expect-error - WebKit-specific property
+                            WebkitAppRegion: "no-drag",
+                          }}
                         >
                           <IconOpenSidebarRight className="h-4 w-4" />
                         </Button>
@@ -7572,7 +7596,13 @@ Make sure to preserve all functionality from both branches when resolving confli
                     </Tooltip>
                   ) : (
                     <PreviewSetupHoverCard>
-                      <span className="inline-flex ml-2">
+                      <span
+                        className="inline-flex ml-2"
+                        style={{
+                          // @ts-expect-error - WebKit-specific property
+                          WebkitAppRegion: "no-drag",
+                        }}
+                      >
                         <Button
                           variant="ghost"
                           size="icon"
@@ -7599,6 +7629,10 @@ Make sure to preserve all functionality from both branches when resolving confli
                               onClick={() => setIsDetailsSidebarOpen(true)}
                               className="h-6 w-6 p-0 hover:bg-foreground/10 transition-colors text-foreground flex-shrink-0 rounded-md ml-2"
                               aria-label="View details"
+                              style={{
+                                // @ts-expect-error - WebKit-specific property
+                                WebkitAppRegion: "no-drag",
+                              }}
                             >
                               <IconOpenSidebarRight className="h-4 w-4" />
                             </Button>
@@ -7620,6 +7654,10 @@ Make sure to preserve all functionality from both branches when resolving confli
                               onClick={() => setIsTerminalSidebarOpen(true)}
                               className="h-6 w-6 p-0 hover:bg-foreground/10 transition-colors text-foreground flex-shrink-0 rounded-md ml-2"
                               aria-label="Open terminal"
+                              style={{
+                                // @ts-expect-error - WebKit-specific property
+                                WebkitAppRegion: "no-drag",
+                              }}
                             >
                               <TerminalSquare className="h-4 w-4" />
                             </Button>
@@ -7642,6 +7680,10 @@ Make sure to preserve all functionality from both branches when resolving confli
                         disabled={restoreWorkspaceMutation.isPending}
                         className="h-6 px-2 gap-1.5 hover:bg-foreground/10 transition-colors text-foreground flex-shrink-0 rounded-md ml-2 flex items-center"
                         aria-label="Restore workspace"
+                        style={{
+                          // @ts-expect-error - WebKit-specific property
+                          WebkitAppRegion: "no-drag",
+                        }}
                       >
                         <UnarchiveIcon className="h-4 w-4" />
                         <span className="text-xs">Restore</span>
@@ -7841,7 +7883,7 @@ Make sure to preserve all functionality from both branches when resolving confli
 
               {/* Disabled input while loading */}
               <div className="px-2 pb-2">
-                <div className="w-full max-w-2xl mx-auto">
+                <div className="w-full max-w-5xl mx-auto">
                   <div className="relative w-full">
                     <PromptInput
                       className="border bg-input-background relative z-10 p-2 rounded-xl opacity-50 pointer-events-none"

@@ -732,10 +732,6 @@ export function SubChatSelector({
 
       <div
         className="relative flex-1 min-w-0 flex items-center"
-        style={{
-          // @ts-expect-error - WebKit-specific property
-          WebkitAppRegion: "no-drag",
-        }}
       >
         {/* Left gradient - visibility controlled via ref */}
         <div
@@ -852,6 +848,10 @@ export function SubChatSelector({
                           isDragOverHere && dragOverSide === "left" && "shadow-[inset_2px_0_0_0_hsl(var(--primary))]",
                           isDragOverHere && dragOverSide === "right" && "shadow-[inset_-2px_0_0_0_hsl(var(--primary))]",
                         )}
+                        style={{
+                          // @ts-expect-error - WebKit-specific property
+                          WebkitAppRegion: "no-drag",
+                        }}
                       >
                         {/* Icon: question icon (priority) OR loading spinner OR mode icon with badge (hide when editing) */}
                         {editingSubChatId !== subChat.id && (
@@ -993,7 +993,13 @@ export function SubChatSelector({
 
         {/* Plus button - absolute positioned on right with gradient cover */}
         {(isMobile || (!isMobile && subChatsSidebarMode === "tabs")) && (
-          <div className="absolute right-0 top-0 bottom-0 flex items-center z-20">
+          <div
+            className="absolute right-0 top-0 bottom-0 flex items-center z-20"
+            style={{
+              // @ts-expect-error - WebKit-specific property
+              WebkitAppRegion: "no-drag",
+            }}
+          >
             {/* Gradient to cover content peeking from the left */}
             <div className="w-6 h-full bg-gradient-to-r from-transparent to-background" />
             <div className="h-full flex items-center bg-background pr-1">
