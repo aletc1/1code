@@ -4,6 +4,7 @@ import {
   desktopViewAtom,
   usagePeriodAtom,
   usageSourceAtom,
+  agentsSidebarOpenAtom,
   type UsagePeriod,
   type UsageSourceFilter,
 } from "../agents/atoms"
@@ -14,7 +15,10 @@ import { ActivityHeatmap } from "./components/activity-heatmap"
 import { DailyCostChart } from "./components/daily-cost-chart"
 import { ModelBreakdown } from "./components/model-breakdown"
 import { formatCompact, formatUSD } from "./lib/format"
-import { RefreshCw } from "lucide-react"
+import { RefreshCw, AlignJustify } from "lucide-react"
+import { useIsMobile } from "../../lib/hooks/use-mobile"
+import { AgentsHeaderControls } from "../agents/ui/agents-header-controls"
+import { Button } from "../../components/ui/button"
 
 const PERIOD_OPTIONS: { value: UsagePeriod; label: string }[] = [
   { value: "7d", label: "7d" },
@@ -33,6 +37,8 @@ export function UsageContent() {
   const [period, setPeriod] = useAtom(usagePeriodAtom)
   const [source, setSource] = useAtom(usageSourceAtom)
   const setDesktopView = useSetAtom(desktopViewAtom)
+  const [sidebarOpen, setSidebarOpen] = useAtom(agentsSidebarOpenAtom)
+  const isMobile = useIsMobile()
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -64,7 +70,28 @@ export function UsageContent() {
   })
 
   return (
-    <div className="h-full overflow-y-auto">
+    <div className="h-full flex flex-col overflow-hidden">
+      {/* Header bar — mirrors kanban layout */}
+      <div className="flex-shrink-0 flex items-center p-1.5">
+        {isMobile ? (
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => setDesktopView(null)}
+            className="h-6 w-6 p-0 hover:bg-foreground/10 transition-[background-color,transform] duration-150 ease-out active:scale-[0.97] text-foreground flex-shrink-0 rounded-md"
+            aria-label="Back"
+          >
+            <AlignJustify className="h-4 w-4" />
+          </Button>
+        ) : (
+          <AgentsHeaderControls
+            isSidebarOpen={sidebarOpen}
+            onToggleSidebar={() => setSidebarOpen((prev) => !prev)}
+          />
+        )}
+      </div>
+
+      <div className="flex-1 overflow-y-auto">
       <div className="max-w-5xl mx-auto px-6 py-6 flex flex-col gap-6">
         <div className="flex items-center justify-between gap-4 flex-wrap">
           <div>
@@ -164,6 +191,7 @@ export function UsageContent() {
             ) : null}
           </>
         )}
+      </div>
       </div>
     </div>
   )
