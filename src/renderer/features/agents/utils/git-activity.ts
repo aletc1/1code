@@ -10,6 +10,7 @@ export interface GitPrInfo {
   title: string
   url: string
   number?: number
+  branch?: string
 }
 
 export type GitActivity = GitCommitInfo | GitPrInfo
@@ -81,7 +82,15 @@ function extractPrInfo(command: string, stdout: string): GitPrInfo | null {
   const titleMatch = command.match(/--title\s+["']([^"']+)["']/)
   const title = titleMatch?.[1] || `PR #${number || ""}`
 
-  return { type: "pr", title, url, number }
+  // Extract branch: either an explicit --head flag, or the branch gh reports
+  // in its "Creating pull request for <branch> into <base>" preamble.
+  const headFlagMatch = command.match(/--head\s+["']?([^\s"']+)["']?/)
+  const preambleMatch = stdout.match(
+    /Creating (?:draft )?pull request for ([^\s]+) into /,
+  )
+  const branch = headFlagMatch?.[1] || preambleMatch?.[1] || undefined
+
+  return { type: "pr", title, url, number, branch }
 }
 
 /**

@@ -15,8 +15,10 @@ import { chats, getDatabase, projects, subChats } from "../../db"
 import { computeFileStatsFromMessages } from "../../file-stats"
 import {
   createWorktreeForChat,
+  fetchGitHubPRComments,
   fetchGitHubPRStatus,
   getWorktreeDiff,
+  invalidateGitHubPRCache,
   removeWorktree,
   sanitizeProjectName,
 } from "../../git"
@@ -1587,7 +1589,11 @@ export const chatsRouter = router({
     }),
 
   /**
-   * Get PR status from GitHub (via gh CLI)
+   * Get PR status from GitHub (via gh CLI).
+   *
+   * Back-fills `chat.prNumber` and `chat.prUrl` when the live fetch detects a
+   * PR — this keeps the sidebar workspace card (which reads from the DB) in
+   * sync without requiring callers to write those columns manually.
    */
   getPrStatus: publicProcedure
     .input(z.object({ chatId: z.string() }))
@@ -1603,7 +1609,24 @@ export const chatsRouter = router({
         return null
       }
 
-      return await fetchGitHubPRStatus(chat.worktreePath)
+      const status = await fetchGitHubPRStatus(chat.worktreePath)
+
+      // Back-fill DB so the sidebar badge can render from cached fields
+      const pr = status?.pr
+      const nextNumber = pr?.number ?? null
+      const nextUrl = pr?.url ?? null
+      if (nextNumber !== chat.prNumber || nextUrl !== chat.prUrl) {
+        try {
+          db.update(chats)
+            .set({ prNumber: nextNumber, prUrl: nextUrl })
+            .where(eq(chats.id, input.chatId))
+            .run()
+        } catch (err) {
+          console.error("[getPrStatus] Failed to back-fill PR fields:", err)
+        }
+      }
+
+      return status
     }),
 
   /**
@@ -1668,6 +1691,69 @@ export const chatsRouter = router({
           )
         }
 
+        throw new Error(errorMsg)
+      }
+    }),
+
+  /**
+   * Fetch issue + review comments for the current branch's PR.
+   */
+  getPrComments: publicProcedure
+    .input(z.object({ chatId: z.string() }))
+    .query(async ({ input }) => {
+      const db = getDatabase()
+      const chat = db
+        .select()
+        .from(chats)
+        .where(eq(chats.id, input.chatId))
+        .get()
+
+      if (!chat?.worktreePath) return []
+      return await fetchGitHubPRComments(chat.worktreePath)
+    }),
+
+  /**
+   * Rename a PR title via `gh pr edit`.
+   *
+   * Caller passes the PR number explicitly so that switching branches
+   * between opening the dialog and saving can't rename the wrong PR.
+   * Falls back to the current-branch PR when `prNumber` is omitted.
+   */
+  updatePrTitle: publicProcedure
+    .input(
+      z.object({
+        chatId: z.string(),
+        title: z.string().trim().min(1).max(256),
+        prNumber: z.number().int().positive().optional(),
+      }),
+    )
+    .mutation(async ({ input }) => {
+      const db = getDatabase()
+      const chat = db
+        .select()
+        .from(chats)
+        .where(eq(chats.id, input.chatId))
+        .get()
+
+      if (!chat?.worktreePath) {
+        throw new Error("No worktree path for this chat")
+      }
+
+      const args = input.prNumber
+        ? ["pr", "edit", String(input.prNumber), "--title", input.title]
+        : ["pr", "edit", "--title", input.title]
+
+      try {
+        await execWithShellEnv("gh", args, { cwd: chat.worktreePath })
+        invalidateGitHubPRCache(chat.worktreePath)
+        return { success: true, title: input.title }
+      } catch (error) {
+        const errorMsg =
+          error instanceof Error ? error.message : "Failed to update PR title"
+        console.error("[updatePrTitle] Error:", error)
+        if (errorMsg.includes("no pull requests found")) {
+          throw new Error("No pull request exists for the current branch")
+        }
         throw new Error(errorMsg)
       }
     }),
