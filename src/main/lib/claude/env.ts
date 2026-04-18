@@ -1,5 +1,5 @@
 import { app } from "electron"
-import { execSync } from "node:child_process"
+import { execFileSync } from "node:child_process"
 import fs from "node:fs"
 import os from "node:os"
 import path from "node:path"
@@ -179,7 +179,10 @@ export function getClaudeShellEnvironment(): Record<string, string> {
   const command = `echo -n "${DELIMITER}"; env; echo -n "${DELIMITER}"; exit`
 
   try {
-    const output = execSync(`${shell} -ilc '${command}'`, {
+    // Use execFileSync with argv array — no shell-string interpolation, so a
+    // compromised `shell` path can't smuggle additional commands via the outer
+    // template literal.
+    const output = execFileSync(shell, ["-ilc", command], {
       encoding: "utf8",
       timeout: 5000,
       env: {

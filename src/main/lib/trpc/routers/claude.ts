@@ -860,8 +860,17 @@ export const claudeRouter = router({
         // Track if observable is still active (not unsubscribed)
         let isObservableActive = true
 
-        // Helper to safely emit (no-op if already unsubscribed)
-        const safeEmit = (chunk: UIMessageChunk) => {
+        // text-delta coalescing: the Claude SDK emits many small delta chunks
+        // per second during streaming. Sending each one through tRPC+IPC churns
+        // the renderer. We buffer consecutive same-id deltas and flush on a
+        // short interval or when a non-delta chunk arrives.
+        const TEXT_DELTA_FLUSH_MS = 24
+        let pendingTextDelta: { type: "text-delta"; id: string; delta: string } | null = null
+        let pendingTextDeltaTimer: ReturnType<typeof setTimeout> | null = null
+
+        // Raw emit that bypasses the text-delta buffer (used by the buffer itself
+        // and by error paths). Returns false if the observer is closed.
+        const rawEmit = (chunk: UIMessageChunk): boolean => {
           if (!isObservableActive) return false
           try {
             emit.next(chunk)
@@ -872,8 +881,49 @@ export const claudeRouter = router({
           }
         }
 
+        const flushPendingTextDelta = (): boolean => {
+          if (pendingTextDeltaTimer !== null) {
+            clearTimeout(pendingTextDeltaTimer)
+            pendingTextDeltaTimer = null
+          }
+          if (pendingTextDelta === null) return true
+          const chunk = pendingTextDelta
+          pendingTextDelta = null
+          return rawEmit(chunk as UIMessageChunk)
+        }
+
+        // Helper to safely emit (no-op if already unsubscribed).
+        // Coalesces text-delta chunks; flushes any pending delta before
+        // emitting chunks of other types so ordering stays correct.
+        const safeEmit = (chunk: UIMessageChunk) => {
+          if (!isObservableActive) return false
+
+          if (chunk.type === "text-delta") {
+            const { id, delta } = chunk as { id: string; delta: string }
+            if (pendingTextDelta && pendingTextDelta.id === id) {
+              pendingTextDelta.delta += delta
+            } else {
+              // Different id → flush the previous buffer first.
+              if (!flushPendingTextDelta()) return false
+              pendingTextDelta = { type: "text-delta", id, delta }
+            }
+            if (pendingTextDeltaTimer === null) {
+              pendingTextDeltaTimer = setTimeout(
+                flushPendingTextDelta,
+                TEXT_DELTA_FLUSH_MS,
+              )
+            }
+            return isObservableActive
+          }
+
+          // Any non-text-delta chunk → flush the buffer first so ordering is preserved.
+          if (!flushPendingTextDelta()) return false
+          return rawEmit(chunk)
+        }
+
         // Helper to safely complete (no-op if already closed)
         const safeComplete = () => {
+          flushPendingTextDelta()
           try {
             emit.complete()
           } catch {
@@ -2854,6 +2904,11 @@ ${prompt}
             `[SD] M:CLEANUP sub=${subId} sessionId=${currentSessionId || "none"}`,
           )
           isObservableActive = false // Prevent emit after unsubscribe
+          if (pendingTextDeltaTimer !== null) {
+            clearTimeout(pendingTextDeltaTimer)
+            pendingTextDeltaTimer = null
+          }
+          pendingTextDelta = null
           abortController.abort()
           activeSessions.delete(input.subChatId)
           clearPendingApprovals("Session ended.", input.subChatId)
