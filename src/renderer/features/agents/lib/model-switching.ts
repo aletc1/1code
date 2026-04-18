@@ -1,10 +1,14 @@
 import { appStore } from "../../../lib/jotai-store"
-import type { AgentMode } from "../atoms"
+import type { AgentMode, ClaudeThinkingPreference } from "../atoms"
 import {
   defaultAgentModeModelAtom,
+  defaultAgentModeThinkingAtom,
   defaultPlanModeModelAtom,
+  defaultPlanModeThinkingAtom,
   defaultReviewModeModelAtom,
+  defaultReviewModeThinkingAtom,
   lastSelectedAgentIdAtom,
+  subChatClaudeThinkingAtomFamily,
   subChatCodexModelIdAtomFamily,
   subChatModelIdAtomFamily,
   subChatProviderOverrideAtomFamily,
@@ -32,6 +36,19 @@ export function getDefaultModelForMode(mode: ModeContext): string {
       return appStore.get(defaultAgentModeModelAtom)
     case "review":
       return appStore.get(defaultReviewModeModelAtom)
+  }
+}
+
+export function getDefaultThinkingForMode(
+  mode: ModeContext,
+): ClaudeThinkingPreference {
+  switch (mode) {
+    case "plan":
+      return appStore.get(defaultPlanModeThinkingAtom)
+    case "agent":
+      return appStore.get(defaultAgentModeThinkingAtom)
+    case "review":
+      return appStore.get(defaultReviewModeThinkingAtom)
   }
 }
 
@@ -70,5 +87,9 @@ export function applyModeDefaultModel(
 ): { modelId: string; provider: Provider } {
   const modelId = getDefaultModelForMode(mode)
   const provider = setSubChatModel(subChatId, modelId)
+  appStore.set(
+    subChatClaudeThinkingAtomFamily(subChatId),
+    getDefaultThinkingForMode(mode),
+  )
   return { modelId, provider }
 }

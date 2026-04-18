@@ -4663,7 +4663,7 @@ const ChatViewInner = memo(function ChatViewInner({
           />
           {/* Workspace subtitle: repo • branch */}
           {(workspaceRepoName || workspaceBranch) && (
-            <div className="max-w-4xl mx-auto px-4">
+            <div className="max-w-5xl mx-auto px-4">
               <span className="text-xs text-muted-foreground/50 truncate block">
                 {[workspaceRepoName, workspaceBranch].filter(Boolean).join(" • ")}
               </span>
@@ -4708,7 +4708,7 @@ const ChatViewInner = memo(function ChatViewInner({
       >
         <div
           ref={contentWrapperRef}
-          className="px-2 max-w-4xl mx-auto -mb-4 space-y-4"
+          className="px-2 max-w-5xl mx-auto -mb-4 space-y-4"
           style={{
             paddingBottom: "32px",
           }}
@@ -4740,7 +4740,7 @@ const ChatViewInner = memo(function ChatViewInner({
       {/* User questions panel - shows for both live (pending) and expired (timed out) questions */}
       {displayQuestions && (
         <div className="px-4 relative z-20">
-          <div className="w-full px-2 max-w-4xl mx-auto">
+          <div className="w-full px-2 max-w-5xl mx-auto">
             <AgentUserQuestion
               ref={questionRef}
               pendingQuestions={displayQuestions}
@@ -4755,7 +4755,7 @@ const ChatViewInner = memo(function ChatViewInner({
       {/* Stacked cards container - queue + status */}
       {shouldShowStackedCards && (
           <div className="px-2 -mb-6 relative z-10">
-            <div className="w-full max-w-4xl mx-auto px-2">
+            <div className="w-full max-w-5xl mx-auto px-2">
               {/* Queue indicator card - top card */}
               {queue.length > 0 && (
                 <AgentQueueIndicator
@@ -7538,6 +7538,10 @@ Make sure to preserve all functionality from both branches when resolving confli
                               onClick={handleOpenLocally}
                               disabled={isImporting}
                               className="h-6 px-2 gap-1.5 text-xs font-medium ml-2"
+                              style={{
+                                // @ts-expect-error - WebKit-specific property
+                                WebkitAppRegion: "no-drag",
+                              }}
                             >
                               {isImporting ? (
                                 <IconSpinner className="h-3 w-3 animate-spin" />
@@ -7569,6 +7573,10 @@ Make sure to preserve all functionality from both branches when resolving confli
                           onClick={() => setIsPreviewSidebarOpen(true)}
                           className="h-6 w-6 p-0 hover:bg-foreground/10 transition-colors text-foreground flex-shrink-0 rounded-md ml-2"
                           aria-label="Open preview"
+                          style={{
+                            // @ts-expect-error - WebKit-specific property
+                            WebkitAppRegion: "no-drag",
+                          }}
                         >
                           <IconOpenSidebarRight className="h-4 w-4" />
                         </Button>
@@ -7577,7 +7585,13 @@ Make sure to preserve all functionality from both branches when resolving confli
                     </Tooltip>
                   ) : (
                     <PreviewSetupHoverCard>
-                      <span className="inline-flex ml-2">
+                      <span
+                        className="inline-flex ml-2"
+                        style={{
+                          // @ts-expect-error - WebKit-specific property
+                          WebkitAppRegion: "no-drag",
+                        }}
+                      >
                         <Button
                           variant="ghost"
                           size="icon"
@@ -7604,6 +7618,10 @@ Make sure to preserve all functionality from both branches when resolving confli
                               onClick={() => setIsDetailsSidebarOpen(true)}
                               className="h-6 w-6 p-0 hover:bg-foreground/10 transition-colors text-foreground flex-shrink-0 rounded-md ml-2"
                               aria-label="View details"
+                              style={{
+                                // @ts-expect-error - WebKit-specific property
+                                WebkitAppRegion: "no-drag",
+                              }}
                             >
                               <IconOpenSidebarRight className="h-4 w-4" />
                             </Button>
@@ -7625,6 +7643,10 @@ Make sure to preserve all functionality from both branches when resolving confli
                               onClick={() => setIsTerminalSidebarOpen(true)}
                               className="h-6 w-6 p-0 hover:bg-foreground/10 transition-colors text-foreground flex-shrink-0 rounded-md ml-2"
                               aria-label="Open terminal"
+                              style={{
+                                // @ts-expect-error - WebKit-specific property
+                                WebkitAppRegion: "no-drag",
+                              }}
                             >
                               <TerminalSquare className="h-4 w-4" />
                             </Button>
@@ -7647,6 +7669,10 @@ Make sure to preserve all functionality from both branches when resolving confli
                         disabled={restoreWorkspaceMutation.isPending}
                         className="h-6 px-2 gap-1.5 hover:bg-foreground/10 transition-colors text-foreground flex-shrink-0 rounded-md ml-2 flex items-center"
                         aria-label="Restore workspace"
+                        style={{
+                          // @ts-expect-error - WebKit-specific property
+                          WebkitAppRegion: "no-drag",
+                        }}
                       >
                         <UnarchiveIcon className="h-4 w-4" />
                         <span className="text-xs">Restore</span>
@@ -7846,7 +7872,7 @@ Make sure to preserve all functionality from both branches when resolving confli
 
               {/* Disabled input while loading */}
               <div className="px-2 pb-2">
-                <div className="w-full max-w-4xl mx-auto">
+                <div className="w-full max-w-5xl mx-auto">
                   <div className="relative w-full">
                     <PromptInput
                       className="border bg-input-background relative z-10 p-2 rounded-xl opacity-50 pointer-events-none"

@@ -297,6 +297,27 @@ export const lastSelectedClaudeThinkingAtom = atomWithStorage<ClaudeThinkingPref
   { getOnInit: true },
 )
 
+export const defaultPlanModeThinkingAtom = atomWithStorage<ClaudeThinkingPreference>(
+  "preferences:default-plan-mode-thinking",
+  "high",
+  undefined,
+  { getOnInit: true },
+)
+
+export const defaultAgentModeThinkingAtom = atomWithStorage<ClaudeThinkingPreference>(
+  "preferences:default-agent-mode-thinking",
+  "high",
+  undefined,
+  { getOnInit: true },
+)
+
+export const defaultReviewModeThinkingAtom = atomWithStorage<ClaudeThinkingPreference>(
+  "preferences:default-review-mode-thinking",
+  "high",
+  undefined,
+  { getOnInit: true },
+)
+
 // Storage for per-subChat Claude model selection.
 // Falls back to lastSelectedModelIdAtom when sub-chat has no explicit selection yet.
 const subChatModelIdsStorageAtom = atomWithStorage<Record<string, string>>(
