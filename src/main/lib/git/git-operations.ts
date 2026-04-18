@@ -71,27 +71,79 @@ export const createGitOperationsRouter = () => {
 				z.object({
 					worktreePath: z.string(),
 					branch: z.string(),
+					/** "auto-stash" stashes uncommitted changes and pops them on the
+					 * new branch; "carry" attempts a plain checkout which git will
+					 * allow only if there's no conflict; default aborts if dirty. */
+					uncommittedStrategy: z
+						.enum(["abort", "carry", "stash"])
+						.optional()
+						.default("abort"),
 				}),
 			)
-			.mutation(async ({ input }): Promise<{ success: boolean }> => {
-				assertRegisteredWorktree(input.worktreePath);
+			.mutation(
+				async ({
+					input,
+				}): Promise<{ success: boolean; stashPopFailed?: boolean }> => {
+					assertRegisteredWorktree(input.worktreePath);
 
-				return withGitLock(input.worktreePath, async () => {
-					// Check for uncommitted changes before checkout
-					if (await hasUncommittedChanges(input.worktreePath)) {
-						throw new Error(
-							"Cannot switch branches: you have uncommitted changes. Please commit or stash your changes first."
-						);
-					}
+					return withGitLock(input.worktreePath, async () => {
+						const dirty = await hasUncommittedChanges(input.worktreePath);
 
-					const git = createGit(input.worktreePath);
-					await withLockRetry(input.worktreePath, () =>
-						git.checkout(input.branch)
-					);
-					invalidateGitStateCaches(input.worktreePath);
-					return { success: true };
-				});
-			}),
+						if (dirty && input.uncommittedStrategy === "abort") {
+							throw new Error(
+								"Cannot switch branches: you have uncommitted changes. Please commit or stash your changes first."
+							);
+						}
+
+						const git = createGit(input.worktreePath);
+
+						if (dirty && input.uncommittedStrategy === "stash") {
+							await withLockRetry(input.worktreePath, () =>
+								git.stash([
+									"push",
+									"-u",
+									"-m",
+									`Auto-stash before switching to ${input.branch}`,
+								]),
+							);
+						}
+
+						try {
+							await withLockRetry(input.worktreePath, () =>
+								git.checkout(input.branch)
+							);
+						} catch (checkoutError) {
+							// If we stashed, try to pop back so the user doesn't lose work
+							if (dirty && input.uncommittedStrategy === "stash") {
+								try {
+									await git.stash(["pop"]);
+								} catch {
+									const msg =
+										checkoutError instanceof Error
+											? checkoutError.message
+											: "Checkout failed";
+									throw new Error(
+										`${msg}. Your uncommitted changes are saved in git stash — run 'git stash pop' manually to restore them.`,
+									);
+								}
+							}
+							throw checkoutError;
+						}
+
+						let stashPopFailed = false;
+						if (dirty && input.uncommittedStrategy === "stash") {
+							try {
+								await git.stash(["pop"]);
+							} catch {
+								stashPopFailed = true;
+							}
+						}
+
+						invalidateGitStateCaches(input.worktreePath);
+						return { success: true, stashPopFailed };
+					});
+				},
+			),
 
 		getHistory: publicProcedure
 			.input(

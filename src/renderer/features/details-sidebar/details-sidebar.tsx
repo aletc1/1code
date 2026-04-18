@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useAtom, useAtomValue, useSetAtom } from "jotai"
-import { ArrowUpRight, TerminalSquare, Box, ListTodo } from "lucide-react"
+import { ArrowUpRight, TerminalSquare, Box, ListTodo, GitPullRequest } from "lucide-react"
 import { ResizableSidebar } from "@/components/ui/resizable-sidebar"
 import { Button } from "@/components/ui/button"
 import {
@@ -39,6 +39,7 @@ import { PlanWidget } from "./sections/plan-widget"
 import { TerminalWidget } from "./sections/terminal-widget"
 import { ChangesWidget } from "./sections/changes-widget"
 import { McpWidget } from "./sections/mcp-widget"
+import { PrWidget } from "./sections/pr-widget"
 import { FilesTab, type FilesTabHandle } from "./sections/files-tab"
 import type { ParsedDiffFile } from "./types"
 import { fileViewerOpenAtomFamily, type AgentMode } from "../agents/atoms"
@@ -65,6 +66,8 @@ function getWidgetIcon(widgetId: WidgetId) {
       return DiffIcon
     case "mcp":
       return OriginalMCPIcon
+    case "pr":
+      return GitPullRequest
     default:
       return Box
   }
@@ -499,6 +502,15 @@ export function DetailsSidebar({
                     onFileSelect={canOpenDiff ? onFileSelect : undefined}
                     diffDisplayMode={diffDisplayMode}
                   />
+                )
+
+              case "pr":
+                // Only show for local chats with a worktree
+                if (!worktreePath) return null
+                return (
+                  <WidgetCard key="pr" widgetId="pr" title="Pull Request">
+                    <PrWidget chatId={chatId} />
+                  </WidgetCard>
                 )
 
               case "mcp":

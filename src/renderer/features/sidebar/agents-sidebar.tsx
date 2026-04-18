@@ -99,6 +99,7 @@ import {
   KeyboardIcon,
   TicketIcon,
   CloudIcon,
+  GitPullRequestFilledIcon,
 } from "../../components/ui/icons"
 import { Logo } from "../../components/ui/logo"
 import { Input } from "../../components/ui/input"
@@ -439,6 +440,7 @@ const AgentChatItem = React.memo(function AgentChatItem({
   gitOwner,
   gitProvider,
   stats,
+  prNumber,
   selectedChatIdsSize,
   canShowPinOption,
   areAllSelectedPinned,
@@ -487,6 +489,7 @@ const AgentChatItem = React.memo(function AgentChatItem({
   gitOwner: string | null | undefined
   gitProvider: string | null | undefined
   stats: { fileCount: number; additions: number; deletions: number } | undefined
+  prNumber: number | null
   selectedChatIdsSize: number
   canShowPinOption: boolean
   areAllSelectedPinned: boolean
@@ -673,6 +676,12 @@ const AgentChatItem = React.memo(function AgentChatItem({
                 )}
                 <span className="truncate flex-1 min-w-0">{displayText}</span>
                 <div className="flex items-center gap-1.5 flex-shrink-0">
+                  {prNumber != null && (
+                    <span className="inline-flex items-center gap-0.5 font-mono text-[10px] text-muted-foreground/80">
+                      <GitPullRequestFilledIcon className="h-2.5 w-2.5" />
+                      {prNumber}
+                    </span>
+                  )}
                   {stats && (stats.additions > 0 || stats.deletions > 0) && (
                     <>
                       <span className="text-green-600 dark:text-green-400">
@@ -1015,6 +1024,7 @@ const ChatListSection = React.memo(function ChatListSection({
               gitOwner={gitOwner}
               gitProvider={gitProvider}
               stats={stats ?? undefined}
+              prNumber={chat.prNumber}
               selectedChatIdsSize={selectedChatIds.size}
               canShowPinOption={canShowPinOption}
               areAllSelectedPinned={areAllSelectedPinned}
