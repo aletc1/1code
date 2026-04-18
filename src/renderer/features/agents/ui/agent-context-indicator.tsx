@@ -13,6 +13,7 @@ const CONTEXT_WINDOWS = {
   opus: 200_000,
   "opus[1m]": 1_000_000,
   sonnet: 200_000,
+  "sonnet[1m]": 1_000_000,
   haiku: 200_000,
 } as const
 

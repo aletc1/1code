@@ -1531,13 +1531,18 @@ export const claudeRouter = router({
             }
 
             const rawResolvedModel = finalCustomConfig?.model || input.model
-            // Opus 1M: the UI exposes `opus[1m]` as a distinct model, but the
-            // Claude CLI only understands the `opus` shortcut. To opt into the
-            // 1M context window we strip the `[1m]` suffix for the model field
-            // and enable the matching beta via ANTHROPIC_BETAS on the child env.
-            const isOpus1M = rawResolvedModel === "opus[1m]"
-            const resolvedModel = isOpus1M ? "opus" : rawResolvedModel
-            if (isOpus1M) {
+            // 1M context: the UI exposes `opus[1m]` and `sonnet[1m]` as
+            // distinct models, but the Claude CLI only understands the base
+            // shortcuts (`opus`, `sonnet`). Strip the `[1m]` suffix for the
+            // model field and enable the shared beta via ANTHROPIC_BETAS on
+            // the child env.
+            const has1MSuffix =
+              typeof rawResolvedModel === "string" &&
+              rawResolvedModel.endsWith("[1m]")
+            const resolvedModel = has1MSuffix
+              ? rawResolvedModel!.slice(0, -4)
+              : rawResolvedModel
+            if (has1MSuffix) {
               const envAsRecord = finalEnv as Record<string, string>
               const existingBetas = envAsRecord.ANTHROPIC_BETAS
               const betaSlug = "context-1m-2025-08-07"
@@ -1554,7 +1559,7 @@ export const claudeRouter = router({
                 : betaSlug
               envAsRecord.ANTHROPIC_BETAS = merged
               console.log(
-                `[claude] Opus 1M context enabled — ANTHROPIC_BETAS=${merged}`,
+                `[claude] 1M context enabled for ${resolvedModel} — ANTHROPIC_BETAS=${merged}`,
               )
             }
 
@@ -2327,6 +2332,7 @@ ${prompt}
                           rawErrorCode,
                           sessionId: msgAny.session_id,
                           messageId: msgAny.message?.id,
+                          model: rawResolvedModel,
                         },
                       } as UIMessageChunk)
                     }
@@ -2669,6 +2675,7 @@ ${prompt}
                       cwd: input.cwd,
                       mode: input.mode,
                       stderr: stderrOutput || "(no stderr captured)",
+                      model: rawResolvedModel,
                     },
                   } as UIMessageChunk)
                 }

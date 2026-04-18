@@ -607,6 +607,8 @@ export function AgentModelSelector({
                   const selected = isItemSelected(item)
                   const disabled = isItemDisabled(item)
                   const crossProvider = isItemCrossProvider(item)
+                  const is1M =
+                    item.type === "claude" && item.model.id.endsWith("[1m]")
                   return (
                     <CommandItem
                       key={getItemKey(item)}
@@ -617,6 +619,14 @@ export function AgentModelSelector({
                     >
                       {getItemIcon(item)}
                       <span className="truncate flex-1">{getItemLabel(item)}</span>
+                      {is1M && (
+                        <span
+                          title="1M context window — significantly higher token cost"
+                          className="text-[10px] font-medium text-amber-600 dark:text-amber-500 shrink-0"
+                        >
+                          1M · higher cost
+                        </span>
+                      )}
                       {crossProvider && (
                         <span className="text-[10px] text-muted-foreground shrink-0">New chat</span>
                       )}

@@ -223,6 +223,7 @@ const AVAILABLE_CLAUDE_MODEL_IDS = [
   "opus",
   "opus[1m]",
   "sonnet",
+  "sonnet[1m]",
   "haiku",
 ] as const
 
@@ -255,7 +256,7 @@ export const defaultReviewModeModelAtom = atomWithStorage<string>(
 
 export const lastSelectedCodexModelIdAtom = atomWithStorage<string>(
   "agents:lastSelectedCodexModelId",
-  "gpt-5.3-codex",
+  "gpt-5.4",
   undefined,
   { getOnInit: true },
 )
@@ -463,6 +464,7 @@ export const MODEL_ID_MAP: Record<string, string> = {
   opus: "opus",
   "opus[1m]": "opus[1m]",
   sonnet: "sonnet",
+  "sonnet[1m]": "sonnet[1m]",
   haiku: "haiku",
 }
 

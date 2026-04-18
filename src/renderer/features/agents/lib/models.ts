@@ -26,6 +26,12 @@ export const CLAUDE_MODELS = [
     thinkings: ["off", "low", "medium", "high"] as ClaudeThinkingLevel[],
   },
   {
+    id: "sonnet[1m]",
+    name: "Sonnet",
+    version: "4.6 1M",
+    thinkings: ["off", "low", "medium", "high"] as ClaudeThinkingLevel[],
+  },
+  {
     id: "haiku",
     name: "Haiku",
     version: "4.5",
@@ -43,6 +49,16 @@ export function formatClaudeThinkingLabel(thinking: ClaudeThinkingLevel): string
 export type CodexThinkingLevel = "low" | "medium" | "high" | "xhigh"
 
 export const CODEX_MODELS = [
+  {
+    id: "gpt-5.4",
+    name: "GPT-5.4",
+    thinkings: ["low", "medium", "high", "xhigh"] as CodexThinkingLevel[],
+  },
+  {
+    id: "gpt-5.4-mini",
+    name: "GPT-5.4 mini",
+    thinkings: ["low", "medium", "high"] as CodexThinkingLevel[],
+  },
   {
     id: "gpt-5.3-codex",
     name: "Codex 5.3",
