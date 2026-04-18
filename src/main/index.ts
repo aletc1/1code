@@ -630,6 +630,8 @@ if (gotTheLock) {
               label: "About 1Code",
               click: () => app.showAboutPanel(),
             },
+            // UPDATES-DISABLED: re-enable to restore "Check for Updates..." menu item
+            /*
             {
               label: updateAvailable
                 ? `Update to v${availableVersion}...`
@@ -648,6 +650,7 @@ if (gotTheLock) {
                 }
               },
             },
+            */
             { type: "separator" },
             {
               label: "Settings...",
@@ -867,9 +870,14 @@ if (gotTheLock) {
 
     // Set update state and rebuild menu
     const setUpdateAvailable = (available: boolean, version?: string) => {
+      // UPDATES-DISABLED: re-enable to restore update menu state updates
+      void available
+      void version
+      /*
       updateAvailable = available
       availableVersion = version || null
       buildMenu()
+      */
     }
 
     // Unlock devtools and rebuild menu (called from renderer via IPC)
@@ -881,8 +889,10 @@ if (gotTheLock) {
       }
     }
 
+    // UPDATES-DISABLED: re-enable to restore update state exposure
     // Expose setUpdateAvailable globally for auto-updater
-    ;(global as any).__setUpdateAvailable = setUpdateAvailable
+    // ;(global as any).__setUpdateAvailable = setUpdateAvailable
+    void setUpdateAvailable
     // Expose unlockDevTools globally for IPC handler
     ;(global as any).__unlockDevTools = unlockDevTools
 
@@ -941,6 +951,8 @@ if (gotTheLock) {
     // Create main window
     createMainWindow()
 
+    // UPDATES-DISABLED: re-enable to restore auto-updater startup
+    /*
     // Initialize auto-updater (production only)
     if (app.isPackaged) {
       await initAutoUpdater(getAllWindows)
@@ -951,6 +963,11 @@ if (gotTheLock) {
         checkForUpdates(true)
       }, 5000)
     }
+    */
+    void initAutoUpdater
+    void setupFocusUpdateCheck
+    void checkForUpdates
+    void downloadUpdate
 
     // Warm up MCP cache 3 seconds after startup (background, non-blocking)
     // This populates the cache so all future sessions can use filtered MCP servers

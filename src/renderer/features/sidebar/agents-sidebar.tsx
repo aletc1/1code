@@ -3499,7 +3499,8 @@ export function AgentsSidebar({
               <div className="flex-1" />
             </div>
 
-            {/* Feedback Button */}
+            {/* UPDATES-DISABLED: re-enable to restore Feedback button */}
+            {/*
             <ButtonCustom
               onClick={() => window.open(FEEDBACK_URL, "_blank")}
               variant="outline"
@@ -3511,6 +3512,7 @@ export function AgentsSidebar({
             >
               <span className="text-sm font-medium">Feedback</span>
             </ButtonCustom>
+            */}
           </motion.div>
         )}
       </AnimatePresence>
