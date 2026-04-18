@@ -27,6 +27,7 @@ import { applyRollbackStash } from "../../git/stash"
 import { checkInternetConnection, checkOllamaStatus } from "../../ollama"
 import { terminalManager } from "../../terminal/manager"
 import { publicProcedure, router } from "../index"
+import { abortClaudeSessionsForSubChats } from "./claude"
 
 type WorktreeSetupFailurePayload = {
   kind: "create-failed" | "setup-failed"
@@ -641,6 +642,17 @@ export const chatsRouter = router({
       // Get chat before deletion
       const chat = db.select().from(chats).where(eq(chats.id, input.id)).get()
 
+      // Abort any active Claude sessions for this chat's sub-chats before cascade delete
+      const subChatIds = db
+        .select({ id: subChats.id })
+        .from(subChats)
+        .where(eq(subChats.chatId, input.id))
+        .all()
+        .map((row) => row.id)
+      if (subChatIds.length > 0) {
+        abortClaudeSessionsForSubChats(subChatIds)
+      }
+
       // Cleanup worktree if it was created (has branch = was a real worktree, not just project path)
       if (chat?.worktreePath && chat?.branch) {
         const project = db
@@ -1040,6 +1052,7 @@ export const chatsRouter = router({
     .input(z.object({ id: z.string() }))
     .mutation(({ input }) => {
       const db = getDatabase()
+      abortClaudeSessionsForSubChats([input.id])
       return db
         .delete(subChats)
         .where(eq(subChats.id, input.id))
