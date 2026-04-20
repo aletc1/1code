@@ -71,6 +71,13 @@
       "when": 1776530863612,
       "tag": "0009_wise_rumiko_fujikawa",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "6",
+      "when": 1776705123163,
+      "tag": "0010_careless_proudstar",
+      "breakpoints": true
     }
   ]
 }

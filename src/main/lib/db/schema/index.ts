@@ -17,9 +17,10 @@ export const projects = sqliteTable("projects", {
   ),
   // Git remote info (extracted from local .git)
   gitRemoteUrl: text("git_remote_url"),
-  gitProvider: text("git_provider"), // "github" | "gitlab" | "bitbucket" | null
+  gitProvider: text("git_provider"), // "github" | "gitlab" | "bitbucket" | "azure" | null
   gitOwner: text("git_owner"),
   gitRepo: text("git_repo"),
+  gitProject: text("git_project"), // Azure DevOps project (null for other providers)
   // Custom project icon (absolute path to local image file)
   iconPath: text("icon_path"),
 })

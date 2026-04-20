@@ -98,6 +98,7 @@ export const projectsRouter = router({
           gitProvider: gitInfo.provider,
           gitOwner: gitInfo.owner,
           gitRepo: gitInfo.repo,
+          gitProject: gitInfo.project,
         })
         .where(eq(projects.id, existing.id))
         .returning()
@@ -122,6 +123,7 @@ export const projectsRouter = router({
         gitProvider: gitInfo.provider,
         gitOwner: gitInfo.owner,
         gitRepo: gitInfo.repo,
+        gitProject: gitInfo.project,
       })
       .returning()
       .get()
@@ -167,6 +169,7 @@ export const projectsRouter = router({
           gitProvider: gitInfo.provider,
           gitOwner: gitInfo.owner,
           gitRepo: gitInfo.repo,
+          gitProject: gitInfo.project,
         })
         .returning()
         .get()
@@ -264,6 +267,7 @@ export const projectsRouter = router({
           gitProvider: gitInfo.provider,
           gitOwner: gitInfo.owner,
           gitRepo: gitInfo.repo,
+          gitProject: gitInfo.project,
         })
         .where(eq(projects.id, input.id))
         .returning()
@@ -343,6 +347,7 @@ export const projectsRouter = router({
             gitProvider: gitInfo.provider,
             gitOwner: gitInfo.owner,
             gitRepo: gitInfo.repo,
+            gitProject: gitInfo.project,
           })
           .returning()
           .get()
@@ -374,6 +379,7 @@ export const projectsRouter = router({
           gitProvider: gitInfo.provider,
           gitOwner: gitInfo.owner,
           gitRepo: gitInfo.repo,
+          gitProject: gitInfo.project,
         })
         .returning()
         .get()
@@ -456,6 +462,7 @@ export const projectsRouter = router({
             gitProvider: gitInfo.provider,
             gitOwner: gitInfo.owner,
             gitRepo: gitInfo.repo,
+            gitProject: gitInfo.project,
           })
           .where(eq(projects.id, existing.id))
           .returning()
@@ -473,6 +480,7 @@ export const projectsRouter = router({
           gitProvider: gitInfo.provider,
           gitOwner: gitInfo.owner,
           gitRepo: gitInfo.repo,
+          gitProject: gitInfo.project,
         })
         .returning()
         .get()
