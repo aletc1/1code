@@ -60,7 +60,7 @@ export function RenamePrTitleDialog({
         <DialogHeader>
           <DialogTitle>Rename PR #{prNumber}</DialogTitle>
           <DialogDescription>
-            Update the title of this pull request on GitHub.
+            Update the title of this pull request.
           </DialogDescription>
         </DialogHeader>
         <Input

@@ -8,7 +8,7 @@ import {
 	REMOTE_AHEAD_ERROR_PREFIX,
 } from "./git-utils";
 import { assertRegisteredWorktree } from "./security";
-import { fetchGitHubPRStatus } from "./github";
+import { buildCreatePRWebUrl, fetchPRStatus, resolveProvider } from "./providers";
 import { gitCache } from "./cache";
 import {
 	createGit,
@@ -644,6 +644,7 @@ export const createGitOperationsRouter = () => {
 			.input(
 				z.object({
 					worktreePath: z.string(),
+					baseBranch: z.string().optional(),
 				}),
 			)
 			.mutation(
@@ -665,18 +666,20 @@ export const createGitOperationsRouter = () => {
 							await withLockRetry(input.worktreePath, () => git.push());
 						}
 
-						// Get the remote URL to construct the GitHub compare URL
 						const remoteUrl = (await git.remote(["get-url", "origin"])) || "";
-						const repoMatch = remoteUrl
-							.trim()
-							.match(/github\.com[:/](.+?)(?:\.git)?$/);
-
-						if (!repoMatch) {
-							throw new Error("Could not determine GitHub repository URL");
+						const provider = await resolveProvider(input.worktreePath);
+						if (!provider) {
+							throw new Error(
+								"Could not determine repository provider from remote URL",
+							);
 						}
 
-						const repo = repoMatch[1].replace(/\.git$/, "");
-						const url = `https://github.com/${repo}/compare/${branch}?expand=1`;
+						const url = buildCreatePRWebUrl({
+							provider,
+							remoteUrl: remoteUrl.trim(),
+							branch,
+							baseBranch: input.baseBranch ?? "main",
+						});
 
 						await shell.openExternal(url);
 						await git.fetch();
@@ -687,6 +690,9 @@ export const createGitOperationsRouter = () => {
 				},
 			),
 
+		// Procedure name preserved for back-compat with the renderer (usePRStatus
+		// hook calls `trpc.changes.getGitHubStatus.useQuery`). Under the hood it
+		// now dispatches by provider — GitHub stays byte-identical, Azure uses az.
 		getGitHubStatus: publicProcedure
 			.input(
 				z.object({
@@ -695,7 +701,7 @@ export const createGitOperationsRouter = () => {
 			)
 			.query(async ({ input }) => {
 				assertRegisteredWorktree(input.worktreePath);
-				return await fetchGitHubPRStatus(input.worktreePath);
+				return await fetchPRStatus(input.worktreePath);
 			}),
 	});
 };

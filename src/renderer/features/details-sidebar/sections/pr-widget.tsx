@@ -117,7 +117,7 @@ export const PrWidget = memo(function PrWidget({ chatId }: PrWidgetProps) {
               </Button>
             </TooltipTrigger>
             <TooltipContent side="left" className="text-xs">
-              Open on GitHub
+              Open pull request
             </TooltipContent>
           </Tooltip>
         </div>

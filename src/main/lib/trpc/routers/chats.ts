@@ -15,17 +15,20 @@ import { chats, getDatabase, projects, subChats } from "../../db"
 import { computeFileStatsFromMessages } from "../../file-stats"
 import {
   createWorktreeForChat,
-  fetchGitHubPRComments,
-  fetchGitHubPRStatus,
   getWorktreeDiff,
-  invalidateGitHubPRCache,
   removeWorktree,
   sanitizeProjectName,
 } from "../../git"
+import {
+  fetchPRStatus,
+  fetchPRComments,
+  invalidatePRCache,
+  mergePR,
+  updatePRTitle,
+} from "../../git/providers"
 import type { WorktreeSetupResult } from "../../git/worktree-config"
 import { computeContentHash, gitCache } from "../../git/cache"
 import { splitUnifiedDiffByFile } from "../../git/diff-parser"
-import { execWithShellEnv } from "../../git/shell-env"
 import { applyRollbackStash } from "../../git/stash"
 import { checkInternetConnection, checkOllamaStatus } from "../../ollama"
 import { terminalManager } from "../../terminal/manager"
@@ -1534,6 +1537,12 @@ export const chatsRouter = router({
         return null
       }
 
+      const project = db
+        .select()
+        .from(projects)
+        .where(eq(projects.id, chat.projectId))
+        .get()
+
       try {
         const git = simpleGit(chat.worktreePath)
         const status = await git.status()
@@ -1551,11 +1560,31 @@ export const chatsRouter = router({
           hasUpstream = false
         }
 
+        // Provider info for agent prompt generation. Null/undefined for
+        // unsupported providers keeps the renderer on the GitHub default.
+        const provider =
+          project?.gitProvider === "github" || project?.gitProvider === "azure"
+            ? project.gitProvider
+            : null
+        const azure =
+          provider === "azure" &&
+          project?.gitOwner &&
+          project?.gitProject &&
+          project?.gitRepo
+            ? {
+                organization: project.gitOwner,
+                project: project.gitProject,
+                repository: project.gitRepo,
+              }
+            : undefined
+
         return {
           branch: chat.branch || status.current || "unknown",
           baseBranch: chat.baseBranch || "main",
           uncommittedCount: status.files.length,
           hasUpstream,
+          provider,
+          azure,
         }
       } catch (error) {
         console.error("[getPrContext] Error:", error)
@@ -1616,7 +1645,7 @@ export const chatsRouter = router({
         return null
       }
 
-      const status = await fetchGitHubPRStatus(chat.worktreePath)
+      const status = await fetchPRStatus(chat.worktreePath)
 
       // Back-fill DB so the sidebar badge can render from cached fields
       const pr = status?.pr
@@ -1659,8 +1688,8 @@ export const chatsRouter = router({
         throw new Error("No PR to merge")
       }
 
-      // Check PR mergeability before attempting merge
-      const prStatus = await fetchGitHubPRStatus(chat.worktreePath)
+      // Check PR mergeability before attempting merge (provider-agnostic)
+      const prStatus = await fetchPRStatus(chat.worktreePath)
       if (prStatus?.pr?.mergeable === "CONFLICTING") {
         throw new Error(
           "MERGE_CONFLICT: This PR has merge conflicts with the base branch. " +
@@ -1669,32 +1698,28 @@ export const chatsRouter = router({
       }
 
       try {
-        await execWithShellEnv(
-          "gh",
-          [
-            "pr",
-            "merge",
-            String(chat.prNumber),
-            `--${input.method}`,
-            "--delete-branch",
-          ],
-          { cwd: chat.worktreePath },
-        )
-        return { success: true }
+        return await mergePR({
+          worktreePath: chat.worktreePath,
+          prNumber: chat.prNumber,
+          method: input.method,
+        })
       } catch (error) {
         console.error("[mergePr] Error:", error)
-        const errorMsg = error instanceof Error ? error.message : "Failed to merge PR"
+        const errorMsg =
+          error instanceof Error ? error.message : "Failed to merge PR"
 
-        // Check for conflict-related error messages from gh CLI
+        // Normalize non-prefixed conflict messages to the MERGE_CONFLICT: contract
+        // so the renderer surfaces the "Sync with Main" action.
         if (
-          errorMsg.includes("not mergeable") ||
-          errorMsg.includes("merge conflict") ||
-          errorMsg.includes("cannot be cleanly created") ||
-          errorMsg.includes("CONFLICTING")
+          !errorMsg.startsWith("MERGE_CONFLICT:") &&
+          (errorMsg.includes("not mergeable") ||
+            errorMsg.includes("merge conflict") ||
+            errorMsg.includes("cannot be cleanly created") ||
+            errorMsg.includes("CONFLICTING"))
         ) {
           throw new Error(
             "MERGE_CONFLICT: This PR has merge conflicts with the base branch. " +
-            "Please sync your branch with the latest changes from main to resolve conflicts."
+              "Please sync your branch with the latest changes from main to resolve conflicts."
           )
         }
 
@@ -1716,7 +1741,7 @@ export const chatsRouter = router({
         .get()
 
       if (!chat?.worktreePath) return []
-      return await fetchGitHubPRComments(chat.worktreePath)
+      return await fetchPRComments(chat.worktreePath)
     }),
 
   /**
@@ -1746,14 +1771,14 @@ export const chatsRouter = router({
         throw new Error("No worktree path for this chat")
       }
 
-      const args = input.prNumber
-        ? ["pr", "edit", String(input.prNumber), "--title", input.title]
-        : ["pr", "edit", "--title", input.title]
-
       try {
-        await execWithShellEnv("gh", args, { cwd: chat.worktreePath })
-        invalidateGitHubPRCache(chat.worktreePath)
-        return { success: true, title: input.title }
+        const result = await updatePRTitle({
+          worktreePath: chat.worktreePath,
+          title: input.title,
+          prNumber: input.prNumber,
+        })
+        invalidatePRCache(chat.worktreePath)
+        return result
       } catch (error) {
         const errorMsg =
           error instanceof Error ? error.message : "Failed to update PR title"
