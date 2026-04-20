@@ -6197,6 +6197,12 @@ export function ChatView({
         setFilteredSubChatId(activeSubChatId)
       }
 
+      // Switch the sub-chat to the configured Review-mode model + thinking
+      // before sending, mirroring the /review slash-command path.
+      if (activeSubChatId) {
+        applyModeDefaultModel(activeSubChatId, "review")
+      }
+
       // Generate review message and set it for ChatViewInner to send
       const message = generateReviewMessage(context)
       if (activeSubChatId) {
