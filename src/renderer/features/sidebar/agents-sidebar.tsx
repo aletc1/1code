@@ -1765,8 +1765,6 @@ export function AgentsSidebar({
   const [confirmArchiveDialogOpen, setConfirmArchiveDialogOpen] = useState(false)
   const [archivingChatId, setArchivingChatId] = useState<string | null>(null)
   const [activeProcessCount, setActiveProcessCount] = useState(0)
-  const [hasWorktree, setHasWorktree] = useState(false)
-  const [uncommittedCount, setUncommittedCount] = useState(0)
 
   // Import sandbox dialog state
   const [importDialogOpen, setImportDialogOpen] = useState(false)
@@ -2773,27 +2771,19 @@ export function AgentsSidebar({
       return
     }
 
-    // Fetch both session count and worktree status in parallel
+    // Only worktree-mode workspaces may have running terminals — skip count for local mode
     const isLocalMode = !chat?.branch
-    const [sessionCount, worktreeStatus] = await Promise.all([
-      // Local mode: terminals are shared and won't be killed on archive, so skip count
-      isLocalMode
-        ? Promise.resolve(0)
-        : utils.terminal.getActiveSessionCount.fetch({ workspaceId: chatId }),
-      utils.chats.getWorktreeStatus.fetch({ chatId }),
-    ])
+    const sessionCount = isLocalMode
+      ? 0
+      : await utils.terminal.getActiveSessionCount.fetch({ workspaceId: chatId })
 
-    const needsConfirmation = sessionCount > 0 || worktreeStatus.hasWorktree
-
-    if (needsConfirmation) {
-      // Show confirmation dialog
+    if (sessionCount > 0) {
+      // Show confirmation dialog so user is warned about running processes
       setArchivingChatId(chatId)
       setActiveProcessCount(sessionCount)
-      setHasWorktree(worktreeStatus.hasWorktree)
-      setUncommittedCount(worktreeStatus.uncommittedCount)
       setConfirmArchiveDialogOpen(true)
     } else {
-      // No active processes and no worktree, archive directly
+      // No active processes, archive directly
       archiveChatMutation.mutate({ id: chatId })
     }
   }, [
@@ -2801,7 +2791,6 @@ export function AgentsSidebar({
     archiveRemoteChatMutation,
     archiveChatMutation,
     utils.terminal.getActiveSessionCount,
-    utils.chats.getWorktreeStatus,
     selectedChatId,
     autoAdvanceTarget,
     previousChatId,
@@ -2811,9 +2800,9 @@ export function AgentsSidebar({
   ])
 
   // Confirm archive after user accepts dialog (optimistic - closes immediately)
-  const handleConfirmArchive = useCallback((deleteWorktree: boolean) => {
+  const handleConfirmArchive = useCallback(() => {
     if (archivingChatId) {
-      archiveChatMutation.mutate({ id: archivingChatId, deleteWorktree })
+      archiveChatMutation.mutate({ id: archivingChatId })
       setArchivingChatId(null)
     }
   }, [archiveChatMutation, archivingChatId])
@@ -3568,8 +3557,6 @@ export function AgentsSidebar({
         onClose={handleCloseArchiveDialog}
         onConfirm={handleConfirmArchive}
         activeProcessCount={activeProcessCount}
-        hasWorktree={hasWorktree}
-        uncommittedCount={uncommittedCount}
       />
 
       {/* Open Locally Dialog */}

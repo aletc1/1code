@@ -42,6 +42,7 @@ import {
   GitFork,
   ListTree,
   TerminalSquare,
+  Trash2,
   X as XIcon,
 } from "lucide-react"
 import { AnimatePresence, motion } from "motion/react"
@@ -156,6 +157,7 @@ import {
   type SelectedCommit
 } from "../atoms"
 import { BUILTIN_SLASH_COMMANDS } from "../commands"
+import { ConfirmDeleteDialog } from "../../../components/confirm-delete-dialog"
 import { AgentSendButton } from "../components/agent-send-button"
 import { OpenLocallyDialog } from "../components/open-locally-dialog"
 import { PreviewSetupHoverCard } from "../components/preview-setup-hover-card"
@@ -4967,6 +4969,7 @@ export function ChatView({
   const setSubChatUnseenChanges = useSetAtom(agentsSubChatUnseenChangesAtom)
   const setJustCreatedIds = useSetAtom(justCreatedIdsAtom)
   const selectedChatId = useAtomValue(selectedAgentChatIdAtom)
+  const setSelectedChatId = useSetAtom(selectedAgentChatIdAtom)
   const setUndoStack = useSetAtom(undoStackAtom)
   const setSelectedFilePath = useSetAtom(selectedDiffFilePathAtom)
   const setFilteredDiffFiles = useSetAtom(filteredDiffFilesAtom)
@@ -5725,6 +5728,25 @@ export function ChatView({
   const handleRestoreWorkspace = useCallback(() => {
     restoreWorkspaceMutation.mutate({ id: chatId })
   }, [chatId, restoreWorkspaceMutation])
+
+  // Delete archived workspace mutation
+  const [confirmDeleteWorkspaceOpen, setConfirmDeleteWorkspaceOpen] = useState(false)
+  const deleteWorkspaceMutation = trpc.chats.delete.useMutation({
+    onSuccess: () => {
+      trpcUtils.chats.list.invalidate()
+      trpcUtils.chats.listArchived.invalidate()
+      setSelectedChatId(null)
+    },
+  })
+
+  const handleDeleteWorkspace = useCallback(() => {
+    setConfirmDeleteWorkspaceOpen(true)
+  }, [])
+
+  const handleConfirmDeleteWorkspace = useCallback(() => {
+    deleteWorkspaceMutation.mutate({ id: chatId, deleteWorktree: true })
+    setConfirmDeleteWorkspaceOpen(false)
+  }, [chatId, deleteWorkspaceMutation])
 
   // Check if this workspace is archived
   const isArchived = !!agentChat?.archivedAt
@@ -7613,6 +7635,7 @@ Make sure to preserve all functionality from both branches when resolving confli
                       isTerminalOpen={isTerminalSidebarOpen}
                       isArchived={isArchived}
                       onRestore={handleRestoreWorkspace}
+                      onDelete={handleDeleteWorkspace}
                       onOpenLocally={handleOpenLocally}
                       showOpenLocally={showOpenLocally}
                     />
@@ -7780,7 +7803,7 @@ Make sure to preserve all functionality from both branches when resolving confli
                       <Button
                         variant="ghost"
                         onClick={handleRestoreWorkspace}
-                        disabled={restoreWorkspaceMutation.isPending}
+                        disabled={restoreWorkspaceMutation.isPending || deleteWorkspaceMutation.isPending}
                         className="h-6 px-2 gap-1.5 hover:bg-foreground/10 transition-colors text-foreground flex-shrink-0 rounded-md ml-2 flex items-center"
                         aria-label="Restore workspace"
                         style={{
@@ -7795,6 +7818,30 @@ Make sure to preserve all functionality from both branches when resolving confli
                     <TooltipContent side="bottom">
                       Restore workspace
                       <Kbd>⇧⌘E</Kbd>
+                    </TooltipContent>
+                  </Tooltip>
+                )}
+                {/* Delete Button - shows when viewing archived workspace (desktop only) */}
+                {!isMobileFullscreen && isArchived && (
+                  <Tooltip delayDuration={500}>
+                    <TooltipTrigger asChild>
+                      <Button
+                        variant="ghost"
+                        onClick={handleDeleteWorkspace}
+                        disabled={restoreWorkspaceMutation.isPending || deleteWorkspaceMutation.isPending}
+                        className="h-6 px-2 gap-1.5 hover:bg-red-500/10 hover:text-red-600 dark:hover:text-red-500 transition-colors text-foreground flex-shrink-0 rounded-md ml-1 flex items-center"
+                        aria-label="Delete workspace"
+                        style={{
+                          // @ts-expect-error - WebKit-specific property
+                          WebkitAppRegion: "no-drag",
+                        }}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                        <span className="text-xs">Delete</span>
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent side="bottom">
+                      Delete workspace permanently
                     </TooltipContent>
                   </Tooltip>
                 )}
@@ -8284,6 +8331,16 @@ Make sure to preserve all functionality from both branches when resolving confli
           matchingProjects={openLocallyMatchingProjects}
           allProjects={projects ?? []}
           remoteSubChatId={activeSubChatId}
+        />
+
+        {/* Delete Workspace Confirmation Dialog */}
+        <ConfirmDeleteDialog
+          open={confirmDeleteWorkspaceOpen}
+          onOpenChange={setConfirmDeleteWorkspaceOpen}
+          title="Delete Workspace"
+          description="Delete this archived workspace? This removes the workspace and its worktree permanently and cannot be undone."
+          onConfirm={handleConfirmDeleteWorkspace}
+          isDeleting={deleteWorkspaceMutation.isPending}
         />
 
         {/* Unified Details Sidebar - combines all right sidebars into one (rightmost) */}
