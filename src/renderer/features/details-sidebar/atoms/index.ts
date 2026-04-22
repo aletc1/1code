@@ -9,6 +9,7 @@ import {
   FileDiff,
   ListTodo,
   GitPullRequest,
+  Activity,
 } from "lucide-react"
 import { OriginalMCPIcon } from "../../../components/ui/icons"
 
@@ -16,7 +17,7 @@ import { OriginalMCPIcon } from "../../../components/ui/icons"
 // Widget System Types & Registry
 // ============================================================================
 
-export type WidgetId = "info" | "todo" | "plan" | "terminal" | "diff" | "mcp" | "pr"
+export type WidgetId = "info" | "tasks" | "todo" | "plan" | "terminal" | "diff" | "mcp" | "pr"
 
 export interface WidgetConfig {
   id: WidgetId
@@ -29,6 +30,7 @@ export interface WidgetConfig {
 export const WIDGET_REGISTRY: WidgetConfig[] = [
   { id: "info", label: "Workspace", icon: Box, canExpand: false, defaultVisible: true },
   { id: "pr", label: "Pull Request", icon: GitPullRequest, canExpand: false, defaultVisible: false },
+  { id: "tasks", label: "Tasks", icon: Activity, canExpand: false, defaultVisible: true },
   { id: "todo", label: "To-dos", icon: ListTodo, canExpand: false, defaultVisible: true },
   { id: "plan", label: "Plan", icon: FileText, canExpand: true, defaultVisible: true },
   { id: "terminal", label: "Terminal", icon: Terminal, canExpand: true, defaultVisible: false },
