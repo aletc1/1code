@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useAtom, useAtomValue, useSetAtom } from "jotai"
-import { ArrowUpRight, TerminalSquare, Box, ListTodo, GitPullRequest } from "lucide-react"
+import { ArrowUpRight, TerminalSquare, Box, ListTodo, GitPullRequest, Activity } from "lucide-react"
 import { ResizableSidebar } from "@/components/ui/resizable-sidebar"
 import { Button } from "@/components/ui/button"
 import {
@@ -35,6 +35,7 @@ import {
 import { WidgetSettingsPopup } from "./widget-settings-popup"
 import { InfoSection } from "./sections/info-section"
 import { TodoWidget } from "./sections/todo-widget"
+import { TasksWidget } from "./sections/tasks-widget"
 import { PlanWidget } from "./sections/plan-widget"
 import { TerminalWidget } from "./sections/terminal-widget"
 import { ChangesWidget } from "./sections/changes-widget"
@@ -56,6 +57,8 @@ function getWidgetIcon(widgetId: WidgetId) {
   switch (widgetId) {
     case "info":
       return Box
+    case "tasks":
+      return Activity
     case "todo":
       return ListTodo
     case "plan":
@@ -440,6 +443,11 @@ export function DetailsSidebar({
                       remoteInfo={remoteInfo}
                     />
                   </WidgetCard>
+                )
+
+              case "tasks":
+                return (
+                  <TasksWidget key="tasks" subChatId={activeSubChatId || null} />
                 )
 
               case "todo":
