@@ -10,6 +10,7 @@ import {
 	animals,
 	uniqueNamesGenerator,
 } from "unique-names-generator";
+import { createGitForNetwork, withGitLock } from "./git-factory";
 import { checkGitLfsAvailable, getShellEnvironment } from "./shell-env";
 import { executeWorktreeSetup } from "./worktree-config";
 import type { WorktreeSetupResult } from "./worktree-config";
@@ -968,6 +969,24 @@ export async function createWorktreeForChat(
 
 		// Use provided base branch or auto-detect
 		const baseBranch = selectedBaseBranch || await getDefaultBranch(projectPath);
+
+		// Best-effort: refresh origin/<baseBranch> so the worktree is based on the
+		// latest remote state. Skipped for local-type branches (user opted into a
+		// local ref) and when no origin remote exists. Never blocks creation.
+		if (branchType !== "local" && (await hasOriginRemote(projectPath))) {
+			try {
+				await withGitLock(projectPath, async () => {
+					const netGit = createGitForNetwork(projectPath);
+					await netGit.fetch("origin", baseBranch);
+				});
+			} catch (fetchError) {
+				const msg =
+					fetchError instanceof Error ? fetchError.message : String(fetchError);
+				console.warn(
+					`[worktree] Pre-create fetch of origin/${baseBranch} failed: ${msg}`,
+				);
+			}
+		}
 
 		const branch = generateBranchName();
 		const worktreesDir = join(homedir(), ".21st", "worktrees");
