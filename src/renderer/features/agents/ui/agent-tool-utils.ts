@@ -197,6 +197,47 @@ export function areExploringGroupPropsEqual(
 }
 
 /**
+ * Pick a short, human-readable summary string from a tool's input.
+ * Walks a priority list of keys (description first, subagent_type last) and
+ * returns the first non-empty string value. Used by both the inline chat
+ * fallback renderer and the live Tasks widget so they stay in sync.
+ */
+export function summarizeToolInput(input: unknown): string {
+  if (!input || typeof input !== "object") return ""
+  const rec = input as Record<string, unknown>
+  const preferredKeys = [
+    "command",
+    "file_path",
+    "path",
+    "pattern",
+    "description",
+    "url",
+    "query",
+    "prompt",
+    "subagent_type",
+  ]
+  for (const key of preferredKeys) {
+    const v = rec[key]
+    if (typeof v === "string" && v.length > 0) return v
+  }
+  for (const key in rec) {
+    const v = rec[key]
+    if (typeof v === "string" && v.length > 0) return v
+  }
+  return ""
+}
+
+/**
+ * Shape-based check for the Claude Agent SDK's subagent-dispatch tool.
+ * Historically emitted as `tool-Task`; with CLI-parity built-in subagents the
+ * SDK can also emit it as `tool-Agent`. Treat both as the same dispatcher so
+ * the chat row stays consistent.
+ */
+export function isSubagentDispatchType(type: string | undefined): boolean {
+  return type === "tool-Task" || type === "tool-Agent"
+}
+
+/**
  * Check if a file path is a plan file.
  * Plan files are stored in the claude-sessions directory under /plans/
  */

@@ -22,7 +22,11 @@ import { AgentEditTool } from "../ui/agent-edit-tool"
 import { AgentExploringGroup } from "../ui/agent-exploring-group"
 import { AgentTaskToolsGroup } from "../ui/agent-task-tools"
 import { AgentPlanFileTool } from "../ui/agent-plan-file-tool"
-import { isPlanFile } from "../ui/agent-tool-utils"
+import {
+  isPlanFile,
+  isSubagentDispatchType,
+  summarizeToolInput,
+} from "../ui/agent-tool-utils"
 import {
   AgentMessageUsage,
   type AgentMessageMetadata,
@@ -518,7 +522,7 @@ export const AssistantMessageItem = memo(function AssistantMessageItem({
     const nestedToolIds = new Set<string>()
     const taskPartIds = new Set(
       messageParts
-        .filter((p: any) => p.type === "tool-Task" && p.toolCallId)
+        .filter((p: any) => isSubagentDispatchType(p.type) && p.toolCallId)
         .map((p: any) => p.toolCallId)
     )
     const orphanTaskGroups = new Map<string, { parts: any[]; firstToolCallId: string }>()
@@ -698,7 +702,7 @@ export const AssistantMessageItem = memo(function AssistantMessageItem({
       )
     }
 
-    if (part.type === "tool-Task") {
+    if (isSubagentDispatchType(part.type)) {
       const nestedTools = nestedToolsMap.get(part.toolCallId) || []
       return <AgentTaskTool key={idx} part={part} nestedTools={nestedTools} chatStatus={status} />
     }
@@ -838,9 +842,21 @@ export const AssistantMessageItem = memo(function AssistantMessageItem({
     }
 
     if (part.type?.startsWith("tool-")) {
+      const toolName = part.type.replace("tool-", "")
+      const summary = summarizeToolInput(part.input)
       return (
-        <div key={idx} className="text-xs text-muted-foreground py-0.5 px-2">
-          {part.type.replace("tool-", "")}
+        <div
+          key={idx}
+          className="text-xs py-0.5 px-2 flex items-center gap-1.5 min-w-0"
+        >
+          <span className="font-medium text-foreground flex-shrink-0">
+            {toolName}
+          </span>
+          {summary && (
+            <span className="text-muted-foreground truncate min-w-0">
+              {summary}
+            </span>
+          )}
         </div>
       )
     }

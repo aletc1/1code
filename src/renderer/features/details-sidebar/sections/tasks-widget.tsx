@@ -12,6 +12,7 @@ import {
   type Message,
 } from "@/features/agents/stores/message-store"
 import { useStreamingStatusStore } from "@/features/agents/stores/streaming-status-store"
+import { summarizeToolInput } from "@/features/agents/ui/agent-tool-utils"
 
 interface TasksWidgetProps {
   subChatId: string | null
@@ -37,31 +38,6 @@ const EXCLUDED_TOOL_NAMES = new Set([
   "ExitPlanMode",
   "Thinking",
 ])
-
-function summarizeInput(input: unknown): string {
-  if (!input || typeof input !== "object") return ""
-  const rec = input as Record<string, unknown>
-  const preferredKeys = [
-    "command",
-    "file_path",
-    "path",
-    "pattern",
-    "description",
-    "url",
-    "query",
-    "prompt",
-    "subagent_type",
-  ]
-  for (const key of preferredKeys) {
-    const v = rec[key]
-    if (typeof v === "string" && v.length > 0) return v
-  }
-  for (const key in rec) {
-    const v = rec[key]
-    if (typeof v === "string" && v.length > 0) return v
-  }
-  return ""
-}
 
 function formatElapsed(ms: number): string {
   const sec = Math.max(0, Math.floor(ms / 1000))
@@ -145,7 +121,7 @@ export const TasksWidget = memo(function TasksWidget({
       byId.set(part.toolCallId, {
         toolCallId: part.toolCallId,
         toolName,
-        summary: summarizeInput(part.input).slice(0, 80),
+        summary: summarizeToolInput(part.input).slice(0, 80),
         startedAt,
         parentId,
         children: [],
