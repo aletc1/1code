@@ -971,9 +971,10 @@ export async function createWorktreeForChat(
 		const baseBranch = selectedBaseBranch || await getDefaultBranch(projectPath);
 
 		// Best-effort: refresh origin/<baseBranch> so the worktree is based on the
-		// latest remote state. Skipped for local-type branches (user opted into a
-		// local ref) and when no origin remote exists. Never blocks creation.
-		if (branchType !== "local" && (await hasOriginRemote(projectPath))) {
+		// latest remote state. Skipped only when there is no origin remote. Never
+		// blocks creation — failures (including local-only branches with no matching
+		// remote ref) are logged and swallowed.
+		if (await hasOriginRemote(projectPath)) {
 			try {
 				await withGitLock(projectPath, async () => {
 					const netGit = createGitForNetwork(projectPath);
