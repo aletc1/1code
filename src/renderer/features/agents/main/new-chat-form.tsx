@@ -985,12 +985,14 @@ export function NewChatForm({
       validatedProject?.id &&
       !selectedBranch
     ) {
-      // Find the default branch in the branches list to get its type
-      // Prefer local over remote if both exist
+      // Find the default branch in the branches list to get its type.
+      // Prefer remote over local so new worktrees are based on the freshest
+      // origin state. Only fall back to local if the default branch has no
+      // remote counterpart.
       const defaultBranchObj = branches.find(
-        (b) => b.name === branchesQuery.data.defaultBranch && b.isDefault && b.type === "local",
-      ) || branches.find(
         (b) => b.name === branchesQuery.data.defaultBranch && b.isDefault && b.type === "remote",
+      ) || branches.find(
+        (b) => b.name === branchesQuery.data.defaultBranch && b.isDefault && b.type === "local",
       )
       // Fallback to "local" if branch not found in list (shouldn't happen but prevents empty selector)
       const branchType = defaultBranchObj?.type || "local"
