@@ -51,7 +51,7 @@ export interface FilesTabHandle {
   isAllExpanded: boolean
 }
 
-const INDENT_PX = 12
+const INDENT_PX = 10
 
 // Static noop atom to avoid creating a family entry for "__noop__"
 const noopExpandedAtom = atom<string[] | null, [string[]], void>(
@@ -228,7 +228,7 @@ const TreeNode = memo(function TreeNode({
             onMouseDown={handleMouseDown}
             onClick={handleClick}
             className={cn(
-              "flex items-center h-[22px] w-full cursor-pointer select-none",
+              "flex items-center h-[24px] w-full cursor-pointer select-none",
               isFocused
                 ? "bg-accent text-accent-foreground"
                 : isActive
@@ -238,27 +238,27 @@ const TreeNode = memo(function TreeNode({
             style={{ paddingLeft: level * INDENT_PX }}
           >
             <span className="w-4 h-full flex items-center justify-center shrink-0">
-              {isFolder ? (
+              {isFolder && (
                 <HiChevronRight
                   className={cn(
                     "size-2.5 text-muted-foreground transition-transform duration-150",
                     isExpanded && "rotate-90",
                   )}
                 />
+              )}
+            </span>
+            <span className="ml-1 w-5 h-full flex items-center justify-start shrink-0">
+              {isFolder ? (
+                isExpanded ? (
+                  <MacOsFolderOpenIcon className="size-5" />
+                ) : (
+                  <MacOsFolderIcon className="size-5" />
+                )
               ) : (
                 FileIcon && <FileIcon className="size-3.5 text-muted-foreground" />
               )}
             </span>
-            {isFolder && (
-              <span className="ml-1 flex items-center justify-center shrink-0">
-                {isExpanded ? (
-                  <MacOsFolderOpenIcon className="size-3.5" />
-                ) : (
-                  <MacOsFolderIcon className="size-3.5" />
-                )}
-              </span>
-            )}
-            <span className={cn("text-xs truncate min-w-0", isFolder ? "ml-1.5" : "ml-1")}>
+            <span className="text-xs truncate min-w-0 ml-1.5">
               {node.name}
             </span>
           </div>
@@ -742,7 +742,7 @@ export const FilesTab = memo(forwardRef<FilesTabHandle, FilesTabProps>(function 
 
   return (
     <div className={cn("flex flex-col h-full min-w-0 overflow-hidden", className)}>
-      <div className="flex-1 overflow-y-auto pb-2">
+      <div className="flex-1 overflow-y-auto py-2 px-2">
         {tree.length === 0 ? (
           <div className="px-2 py-4 text-center">
             <p className="text-xs text-muted-foreground">Loading files...</p>
