@@ -499,7 +499,7 @@ export function TerminalSidebar({
                 workspaceId={workspaceId}
                 scopeKey={scopeKey}
                 tabId={tabId}
-                initialCommands={initialCommands}
+                initialCommands={activeTerminal.initialCommands ?? initialCommands}
                 initialCwd={cwd}
               />
             </motion.div>
@@ -603,7 +603,7 @@ export function TerminalSidebar({
                 workspaceId={workspaceId}
                 scopeKey={scopeKey}
                 tabId={tabId}
-                initialCommands={initialCommands}
+                initialCommands={activeTerminal.initialCommands ?? initialCommands}
                 initialCwd={cwd}
               />
             </motion.div>
@@ -876,7 +876,7 @@ export function TerminalBottomPanelContent({
               workspaceId={workspaceId}
               scopeKey={scopeKey}
               tabId={tabId}
-              initialCommands={initialCommands}
+              initialCommands={activeTerminal.initialCommands ?? initialCommands}
               initialCwd={cwd}
             />
           </motion.div>

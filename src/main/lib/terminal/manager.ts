@@ -1,12 +1,63 @@
 import { EventEmitter } from "node:events"
 import { FALLBACK_SHELL, SHELL_CRASH_THRESHOLD_MS } from "./env"
 import { portManager } from "./port-manager"
+import { getProcessTree } from "./port-scanner"
 import { createSession, setupInitialCommands } from "./session"
 import type {
 	CreateSessionParams,
 	SessionResult,
 	TerminalSession,
 } from "./types"
+
+type KillSignal = "SIGTERM" | "SIGKILL" | "SIGINT" | "SIGHUP"
+
+/**
+ * Kill the entire process tree rooted at the pty's shell.
+ *
+ * `pty.kill()` only signals the shell; long-lived children spawned inside the
+ * shell (e.g. `bun run dev` -> `vite` -> `node`) often survive because they
+ * either disowned themselves or live in a child process group. Walk the tree
+ * with pidtree, signal each descendant, then signal the shell via the pty.
+ *
+ * Errors are swallowed: pids may have already exited (ESRCH), and we never
+ * want kill failures to block the larger shutdown / kill flow.
+ */
+async function killProcessTree(
+	session: TerminalSession,
+	signal: KillSignal = "SIGTERM",
+): Promise<void> {
+	const rootPid = session.pty.pid
+	let descendants: number[] = []
+	if (rootPid) {
+		try {
+			const tree = await getProcessTree(rootPid)
+			descendants = tree.filter((pid) => pid !== rootPid)
+		} catch {
+			// pidtree may fail if the root already exited; fall back to pty-only kill.
+		}
+	}
+
+	// Signal leaves first so parents don't respawn children.
+	for (const pid of descendants.reverse()) {
+		try {
+			process.kill(pid, signal)
+		} catch (err) {
+			const code = (err as NodeJS.ErrnoException | undefined)?.code
+			if (code && code !== "ESRCH") {
+				console.warn(
+					`[TerminalManager] Failed to ${signal} descendant pid ${pid}:`,
+					err,
+				)
+			}
+		}
+	}
+
+	try {
+		session.pty.kill(signal)
+	} catch (err) {
+		console.warn(`[TerminalManager] pty.kill(${signal}) failed:`, err)
+	}
+}
 
 export class TerminalManager extends EventEmitter {
 	private sessions = new Map<string, TerminalSession>()
@@ -80,17 +131,21 @@ export class TerminalManager extends EventEmitter {
 		session.pty.onExit(async ({ exitCode, signal }) => {
 			session.isAlive = false
 
-			// Check if shell crashed quickly - try fallback
+			// Check if shell crashed quickly - try fallback. Skip when the user
+			// asked us to kill this session: SIGKILL/SIGTERM look like a "crash"
+			// (non-zero exit, short duration) but we must not resurrect.
 			const sessionDuration = Date.now() - session.startTime
 			const crashedQuickly =
 				sessionDuration < SHELL_CRASH_THRESHOLD_MS && exitCode !== 0
 
-			if (crashedQuickly && !session.usedFallback) {
+			if (crashedQuickly && !session.usedFallback && !session.intentionalKill) {
 				console.warn(
 					`[TerminalManager] Shell "${session.shell}" exited with code ${exitCode} after ${sessionDuration}ms, retrying with fallback shell "${FALLBACK_SHELL}"`,
 				)
 
-				this.sessions.delete(paneId)
+				if (this.sessions.get(paneId) === session) {
+					this.sessions.delete(paneId)
+				}
 
 				try {
 					await this.doCreateSession({
@@ -111,9 +166,12 @@ export class TerminalManager extends EventEmitter {
 
 			this.emit(`exit:${paneId}`, exitCode, signal)
 
-			// Clean up session after delay
+			// Clean up session after delay. Capture the session ref so we don't
+			// accidentally evict a fresh session that took over this paneId.
 			const timeout = setTimeout(() => {
-				this.sessions.delete(paneId)
+				if (this.sessions.get(paneId) === session) {
+					this.sessions.delete(paneId)
+				}
 			}, 5000)
 			timeout.unref()
 		})
@@ -180,7 +238,8 @@ export class TerminalManager extends EventEmitter {
 			return
 		}
 
-		session.pty.kill(signal)
+		// Fire-and-forget: callers (tRPC) don't await; pidtree resolves quickly.
+		void killProcessTree(session, signal as KillSignal)
 		session.lastActive = Date.now()
 	}
 
@@ -193,9 +252,24 @@ export class TerminalManager extends EventEmitter {
 			return
 		}
 
-		if (session.isAlive) {
-			session.pty.kill()
-		} else {
+		if (!session.isAlive) {
+			this.sessions.delete(paneId)
+			return
+		}
+
+		// Mark this as a deliberate kill so the exit handler doesn't try to
+		// "recover" with a fallback shell when the user just clicked Stop.
+		session.intentionalKill = true
+
+		// SIGKILL the whole tree: the user pressed Stop and expects an immediate
+		// teardown. SIGTERM lets dev servers (vite, etc.) do graceful shutdown
+		// which can take seconds; SIGKILL terminates them instantly.
+		await killProcessTree(session, "SIGKILL")
+
+		// Mark dead and evict synchronously so a quick Run-again creates a fresh
+		// session via createOrAttach instead of attaching to the still-dying one.
+		session.isAlive = false
+		if (this.sessions.get(paneId) === session) {
 			this.sessions.delete(paneId)
 		}
 	}
@@ -275,6 +349,9 @@ export class TerminalManager extends EventEmitter {
 			return true
 		}
 
+		// Suppress fallback-shell crash recovery for this teardown.
+		session.intentionalKill = true
+
 		return new Promise<boolean>((resolve) => {
 			let resolved = false
 			let sigtermTimeout: ReturnType<typeof setTimeout> | undefined
@@ -296,11 +373,7 @@ export class TerminalManager extends EventEmitter {
 			sigtermTimeout = setTimeout(() => {
 				if (resolved || !session.isAlive) return
 
-				try {
-					session.pty.kill("SIGKILL")
-				} catch (error) {
-					console.error(`Failed to send SIGKILL to terminal ${paneId}:`, error)
-				}
+				void killProcessTree(session, "SIGKILL")
 
 				// Force cleanup after another 500ms
 				sigkillTimeout = setTimeout(() => {
@@ -318,15 +391,13 @@ export class TerminalManager extends EventEmitter {
 			}, 2000)
 			sigtermTimeout.unref()
 
-			// Send SIGTERM
-			try {
-				session.pty.kill()
-			} catch (error) {
+			// Send SIGTERM to the whole tree
+			killProcessTree(session, "SIGTERM").catch((error) => {
 				console.error(`Failed to send SIGTERM to terminal ${paneId}:`, error)
 				session.isAlive = false
 				this.sessions.delete(paneId)
 				cleanup(false)
-			}
+			})
 		})
 	}
 
@@ -405,7 +476,11 @@ export class TerminalManager extends EventEmitter {
 				})
 
 				exitPromises.push(exitPromise)
-				session.pty.kill()
+				// Suppress fallback-shell recovery during shutdown.
+				session.intentionalKill = true
+				// Kill the whole tree; on app shutdown SIGKILL is the right hammer
+				// because we can't afford to wait 2s per terminal for SIGTERM.
+				void killProcessTree(session, "SIGKILL")
 			}
 		}
 

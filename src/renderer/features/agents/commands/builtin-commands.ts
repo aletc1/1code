@@ -18,6 +18,36 @@ export const COMMAND_PROMPTS: Partial<
     "Initialize this project by creating a CLAUDE.md file that documents the codebase architecture, key commands, and conventions for AI assistants. Analyze the repo structure and existing config files first.",
   simplify:
     "Review the code in the current context for reuse, quality, and efficiency. Look for duplicated logic, unnecessary abstractions, dead code, and premature complexity. Propose concrete simplifications and apply them.",
+  "scripts-fill": `Populate the "scripts" array in .1code/worktree.json so the Scripts widget can run common project commands.
+
+Steps:
+1. Detect the project type by scanning the repo root and (if applicable) workspace packages:
+   - Node/TS: every package.json (root + monorepo packages). Read the "scripts" field of each and surface the most useful ones (dev, build, start, test, lint, typecheck). Use the project's package manager based on the lockfile (bun.lockb -> bun, pnpm-lock.yaml -> pnpm, yarn.lock -> yarn, package-lock.json -> npm).
+   - .NET: any *.csproj or *.sln -> "dotnet run", "dotnet build", "dotnet test".
+   - Rust: Cargo.toml -> "cargo run", "cargo build", "cargo test".
+   - Go: go.mod -> "go run ./...", "go build ./...", "go test ./...".
+   - Python: pyproject.toml / poetry / uv / pipenv -> the appropriate run/test commands.
+   - Mix only what makes sense; prefer high-value commands (dev / build / test / lint / typecheck) over surfacing every script in the repo.
+2. Read the existing .1code/worktree.json (it may already have setup-worktree). MERGE: do not delete other top-level keys.
+3. Write back .1code/worktree.json with a "scripts" array of objects: { "name": <short slug>, "command": <shell command> }.
+
+Constraints:
+- "name" must be unique within the array, lowercase, kebab-case (e.g. "dev", "build", "test", "lint-web").
+- "command" runs from the worktree root. Do not include "cd ..." prefixes.
+- Pick commands that work cross-platform when possible. No platform variants.
+- Cap at ~8 entries to avoid clutter — surface the most useful ones.
+
+Example for a bun monorepo:
+{
+  "scripts": [
+    { "name": "dev",       "command": "bun run dev" },
+    { "name": "build",     "command": "bun run build" },
+    { "name": "test",      "command": "bun test" },
+    { "name": "typecheck", "command": "bun run typecheck" }
+  ]
+}
+
+Now analyze this project and update .1code/worktree.json with the appropriate scripts array.`,
   "worktree-setup": `Create a worktree setup script for this project.
 
 Your task:
@@ -50,7 +80,7 @@ Now analyze this project and create .1code/worktree.json with the appropriate se
  */
 export function isPromptCommand(
   type: BuiltinCommandAction["type"],
-): type is "review" | "release-notes" | "security-review" | "commit" | "worktree-setup" | "init" | "simplify" {
+): type is "review" | "release-notes" | "security-review" | "commit" | "worktree-setup" | "scripts-fill" | "init" | "simplify" {
   return type in COMMAND_PROMPTS
 }
 
@@ -127,6 +157,13 @@ export const BUILTIN_SLASH_COMMANDS: SlashCommandOption[] = [
     name: "worktree-setup",
     command: "/worktree-setup",
     description: "Generate worktree setup config with AI",
+    category: "builtin",
+  },
+  {
+    id: "builtin:scripts-fill",
+    name: "scripts-fill",
+    command: "/scripts-fill",
+    description: "Generate runnable scripts for the Scripts widget",
     category: "builtin",
   },
   {

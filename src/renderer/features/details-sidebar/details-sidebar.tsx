@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useAtom, useAtomValue, useSetAtom } from "jotai"
-import { ArrowUpRight, TerminalSquare, Box, ListTodo, GitPullRequest, Activity, Info, Folder, Search } from "lucide-react"
+import { ArrowUpRight, TerminalSquare, Box, ListTodo, GitPullRequest, Activity, Info, Folder, Search, PlayCircle } from "lucide-react"
 import { ResizableSidebar } from "@/components/ui/resizable-sidebar"
 import { Button } from "@/components/ui/button"
 import {
@@ -41,6 +41,9 @@ import { TerminalWidget } from "./sections/terminal-widget"
 import { ChangesWidget } from "./sections/changes-widget"
 import { McpWidget } from "./sections/mcp-widget"
 import { PrWidget } from "./sections/pr-widget"
+import { ScriptsWidget } from "./sections/scripts-widget"
+import { getTerminalScopeKey } from "../terminal/utils"
+import { trpc } from "../../lib/trpc"
 import { FilesTab, type FilesTabHandle } from "./sections/files-tab"
 import { SearchTab } from "./sections/search-tab"
 import type { ParsedDiffFile } from "./types"
@@ -48,6 +51,7 @@ import { fileViewerOpenAtomFamily, type AgentMode } from "../agents/atoms"
 import {
   agentsSettingsDialogOpenAtom,
   agentsSettingsDialogActiveTabAtom,
+  selectedProjectAtom,
 } from "@/lib/atoms"
 
 // ============================================================================
@@ -72,6 +76,8 @@ function getWidgetIcon(widgetId: WidgetId) {
       return OriginalMCPIcon
     case "pr":
       return GitPullRequest
+    case "scripts":
+      return PlayCircle
     default:
       return Box
   }
@@ -259,6 +265,38 @@ export function DetailsSidebar({
     setSettingsTab("mcp")
     setSettingsOpen(true)
   }, [setSettingsTab, setSettingsOpen])
+
+  // Fetch chat to derive projectId + terminal scope for the Scripts widget
+  const { data: chatData } = trpc.chats.get.useQuery({ id: chatId })
+  const projectIdForScripts = chatData?.projectId ?? null
+  const scriptsScopeKey = useMemo(
+    () =>
+      getTerminalScopeKey({
+        id: chatId,
+        branch: chatData?.branch ?? null,
+        worktreePath,
+      }),
+    [chatId, chatData?.branch, worktreePath],
+  )
+
+  // Pre-select the right project when opening settings from the Scripts widget
+  // so the user doesn't have to find it manually in the project list.
+  const setSelectedProject = useSetAtom(selectedProjectAtom)
+  const handleOpenScriptsSettings = useCallback(() => {
+    if (chatData?.project) {
+      setSelectedProject({
+        id: chatData.project.id,
+        name: chatData.project.name,
+        path: chatData.project.path,
+        gitRemoteUrl: chatData.project.gitRemoteUrl ?? null,
+        gitProvider: (chatData.project.gitProvider as "github" | "gitlab" | "bitbucket" | null) ?? null,
+        gitOwner: chatData.project.gitOwner ?? null,
+        gitRepo: chatData.project.gitRepo ?? null,
+      })
+    }
+    setSettingsTab("projects")
+    setSettingsOpen(true)
+  }, [chatData?.project, setSelectedProject, setSettingsTab, setSettingsOpen])
 
   // Per-workspace widget visibility
   const widgetVisibilityAtom = useMemo(
@@ -568,6 +606,41 @@ export function DetailsSidebar({
                     hideExpand
                   >
                     <McpWidget />
+                  </WidgetCard>
+                )
+
+              case "scripts":
+                if (!worktreePath) return null
+                return (
+                  <WidgetCard
+                    key="scripts"
+                    widgetId="scripts"
+                    title="Scripts"
+                    badge={
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={handleOpenScriptsSettings}
+                            className="h-5 w-5 p-0 hover:bg-foreground/10 text-muted-foreground hover:text-foreground rounded-md opacity-0 group-hover:opacity-100 transition-[background-color,opacity] duration-150 ease-out flex-shrink-0"
+                            aria-label="Manage scripts"
+                          >
+                            <ArrowUpRight className="h-3 w-3" />
+                          </Button>
+                        </TooltipTrigger>
+                        <TooltipContent side="left">Manage scripts</TooltipContent>
+                      </Tooltip>
+                    }
+                    hideExpand
+                  >
+                    <ScriptsWidget
+                      chatId={chatId}
+                      projectId={projectIdForScripts}
+                      worktreePath={worktreePath}
+                      scopeKey={scriptsScopeKey}
+                      onOpenSettings={handleOpenScriptsSettings}
+                    />
                   </WidgetCard>
                 )
 

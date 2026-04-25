@@ -9,10 +9,16 @@ import {
   type WorktreeConfig,
 } from "../../git/worktree-config"
 
+const WorktreeScriptSchema = z.object({
+  name: z.string().min(1).max(60),
+  command: z.string().min(1),
+})
+
 const WorktreeConfigSchema = z.object({
   "setup-worktree-unix": z.union([z.array(z.string()), z.string()]).optional(),
   "setup-worktree-windows": z.union([z.array(z.string()), z.string()]).optional(),
   "setup-worktree": z.union([z.array(z.string()), z.string()]).optional(),
+  scripts: z.array(WorktreeScriptSchema).optional(),
 })
 
 export const worktreeConfigRouter = router({

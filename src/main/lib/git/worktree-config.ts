@@ -6,10 +6,16 @@ import { getShellEnvironment } from "./shell-env"
 
 const execAsync = promisify(exec)
 
+export interface WorktreeScript {
+  name: string
+  command: string
+}
+
 export interface WorktreeConfig {
   "setup-worktree-unix"?: string[] | string
   "setup-worktree-windows"?: string[] | string
   "setup-worktree"?: string[] | string
+  scripts?: WorktreeScript[]
 }
 
 export type WorktreeConfigSource = "custom" | "cursor" | "1code" | null
