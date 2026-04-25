@@ -12,6 +12,7 @@ import { Search as SearchIcon, X as XIcon, ChevronRight } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { trpc } from "@/lib/trpc"
 import { fileViewerScrollTargetAtom } from "@/features/agents/atoms"
+import { getFileIconByExtension } from "@/features/agents/mentions/agents-file-mention"
 
 interface LineMatch {
   line: number
@@ -250,6 +251,7 @@ export function SearchTab({
 
         {fileEntries.map(({ path, matches }) => {
           const isCollapsed = collapsed.has(path)
+          const FileIcon = getFileIconByExtension(path)
           return (
             <div key={path} className="select-none">
               <button
@@ -263,6 +265,7 @@ export function SearchTab({
                     !isCollapsed && "rotate-90",
                   )}
                 />
+                {FileIcon && <FileIcon className="size-3.5 shrink-0" />}
                 <span className="truncate min-w-0 flex-1 text-left font-medium">{path}</span>
                 <span className="text-[10px] text-muted-foreground tabular-nums shrink-0">
                   {matches.length}
