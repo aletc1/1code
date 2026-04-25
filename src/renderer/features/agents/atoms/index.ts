@@ -1309,3 +1309,16 @@ export const fileViewerOpenAtomFamily = atomFamily((chatId: string) =>
     },
   ),
 )
+
+/**
+ * Global pending scroll target for the file viewer. Set by Search tab on
+ * result click, read by FileViewerSidebar after mount + content load.
+ * `nonce` ensures clicking the same {path, line} twice still re-scrolls.
+ */
+export interface FileViewerScrollTarget {
+  path: string
+  line: number
+  nonce: number
+}
+
+export const fileViewerScrollTargetAtom = atom<FileViewerScrollTarget | null>(null)
