@@ -48,6 +48,7 @@ import {
   fileViewerMinimapAtom,
   fileViewerLineNumbersAtom,
   fileViewerDisplayModeAtom,
+  fileViewerScrollTargetAtom,
   type FileViewerDisplayMode,
 } from "../../agents/atoms"
 import { useFileContent, getErrorMessage } from "../hooks/use-file-content"
@@ -503,6 +504,8 @@ function CodeViewer({
   const containerRef = useRef<HTMLDivElement>(null)
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null)
   const [hasSelection, setHasSelection] = useState(false)
+  // Pending line to scroll to once Monaco mounts (set by Search tab clicks).
+  const pendingScrollLineRef = useRef<number | null>(null)
 
   // Handle ⌘⇧O hotkey to open current file in external editor
   useEffect(() => {
@@ -515,6 +518,21 @@ function CodeViewer({
     window.addEventListener("open-file-in-editor", handler)
     return () => window.removeEventListener("open-file-in-editor", handler)
   }, [filePath, preferredEditor, openInAppMutation])
+
+  // Read pending scroll target set by Search tab on result click.
+  const [scrollTarget, setScrollTarget] = useAtom(fileViewerScrollTargetAtom)
+  useEffect(() => {
+    if (!scrollTarget || scrollTarget.path !== filePath || scrollTarget.line < 1) return
+    pendingScrollLineRef.current = scrollTarget.line
+    const ed = editorRef.current
+    if (ed && ed.getModel()) {
+      ed.revealLineInCenter(scrollTarget.line)
+      ed.setPosition({ lineNumber: scrollTarget.line, column: 1 })
+      pendingScrollLineRef.current = null
+    }
+    // Clear the target so it doesn't re-trigger on unrelated re-renders.
+    setScrollTarget(null)
+  }, [scrollTarget, filePath, setScrollTarget])
 
   // Compute Monaco theme: use custom user theme if available, otherwise fallback
   const monacoTheme = useMemo(() => {
@@ -533,6 +551,22 @@ function CodeViewer({
   }, [currentTheme])
 
   const { content, isLoading, error } = useFileContent(projectPath, filePath)
+
+  // Apply pending scroll target once content is available (Monaco rebuilds the
+  // model when `value` changes, so we defer one frame to ensure it's ready).
+  useEffect(() => {
+    const line = pendingScrollLineRef.current
+    if (!line || content == null) return
+    const ed = editorRef.current
+    if (!ed) return
+    const raf = requestAnimationFrame(() => {
+      if (!editorRef.current) return
+      editorRef.current.revealLineInCenter(line)
+      editorRef.current.setPosition({ lineNumber: line, column: 1 })
+      pendingScrollLineRef.current = null
+    })
+    return () => cancelAnimationFrame(raf)
+  }, [content, filePath])
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -625,6 +659,14 @@ function CodeViewer({
       const hasText = !!(selection && !selection.isEmpty() && monacoEditor.getModel()?.getValueInRange(selection)?.trim())
       setHasSelection(hasText)
     })
+
+    // Apply any pending scroll target (set by Search tab before mount completed)
+    const pendingLine = pendingScrollLineRef.current
+    if (pendingLine && monacoEditor.getModel()) {
+      monacoEditor.revealLineInCenter(pendingLine)
+      monacoEditor.setPosition({ lineNumber: pendingLine, column: 1 })
+      pendingScrollLineRef.current = null
+    }
   }, [currentTheme])
 
   const handleCopy = useCallback(() => {

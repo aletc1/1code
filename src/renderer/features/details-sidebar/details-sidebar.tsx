@@ -42,6 +42,7 @@ import { ChangesWidget } from "./sections/changes-widget"
 import { McpWidget } from "./sections/mcp-widget"
 import { PrWidget } from "./sections/pr-widget"
 import { FilesTab, type FilesTabHandle } from "./sections/files-tab"
+import { SearchTab } from "./sections/search-tab"
 import type { ParsedDiffFile } from "./types"
 import { fileViewerOpenAtomFamily, type AgentMode } from "../agents/atoms"
 import {
@@ -380,13 +381,25 @@ export function DetailsSidebar({
               >
                 Files
               </button>
+              <button
+                type="button"
+                onClick={() => setActiveTab("search")}
+                className={cn(
+                  "px-2.5 py-1 text-xs font-medium rounded-md transition-colors",
+                  activeTab === "search"
+                    ? "bg-background text-foreground shadow-sm"
+                    : "text-muted-foreground hover:text-foreground",
+                )}
+              >
+                Search
+              </button>
             </div>
           </div>
 
           {/* Right-side header actions */}
           {activeTab === "details" ? (
             <WidgetSettingsPopup workspaceId={chatId} isRemoteChat={isRemoteChat} />
-          ) : (
+          ) : activeTab === "files" ? (
             <div className="flex items-center gap-0.5">
               <Tooltip>
                 <TooltipTrigger asChild>
@@ -424,7 +437,7 @@ export function DetailsSidebar({
                 </TooltipContent>
               </Tooltip>
             </div>
-          )}
+          ) : null}
         </div>
 
         {/* Tab content — both tabs always mounted to preserve state */}
@@ -561,6 +574,12 @@ export function DetailsSidebar({
           onExpandedStateChange={setFilesAllExpanded}
           currentViewerFilePath={fileViewerPath}
           className={cn("flex-1", activeTab !== "files" && "hidden")}
+        />
+        <SearchTab
+          worktreePath={worktreePath}
+          onSelectFile={onOpenFile ?? noopSelectFile}
+          isActive={activeTab === "search"}
+          className={cn("flex-1", activeTab !== "search" && "hidden")}
         />
       </div>
     </ResizableSidebar>

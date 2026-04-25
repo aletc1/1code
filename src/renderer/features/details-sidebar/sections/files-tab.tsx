@@ -8,6 +8,7 @@ import { toast } from "sonner"
 import { cn } from "@/lib/utils"
 import { trpc } from "@/lib/trpc"
 import { UnknownFileIcon } from "@/icons/framework-icons"
+import { MacOsFolderIcon, MacOsFolderOpenIcon } from "@/icons/macos-folder-icon"
 import {
   ContextMenu,
   ContextMenuContent,
@@ -36,7 +37,7 @@ interface FileTreeNode {
 
 interface FilesTabProps {
   worktreePath: string | null
-  onSelectFile: (filePath: string) => void
+  onSelectFile: (filePath: string, line?: number) => void
   onExpandedStateChange?: (allExpanded: boolean) => void
   /** Absolute path of the file currently open in file viewer (for highlight sync) */
   currentViewerFilePath?: string | null
@@ -248,7 +249,18 @@ const TreeNode = memo(function TreeNode({
                 FileIcon && <FileIcon className="size-3.5 text-muted-foreground" />
               )}
             </span>
-            <span className="ml-1 text-xs truncate min-w-0">{node.name}</span>
+            {isFolder && (
+              <span className="ml-1 flex items-center justify-center shrink-0">
+                {isExpanded ? (
+                  <MacOsFolderOpenIcon className="size-3.5" />
+                ) : (
+                  <MacOsFolderIcon className="size-3.5" />
+                )}
+              </span>
+            )}
+            <span className={cn("text-xs truncate min-w-0", isFolder ? "ml-1.5" : "ml-1")}>
+              {node.name}
+            </span>
           </div>
         </ContextMenuTrigger>
         <ContextMenuContent className="w-52">

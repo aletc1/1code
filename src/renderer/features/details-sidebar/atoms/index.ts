@@ -145,7 +145,7 @@ export const detailsSidebarOpenAtom = atomWithWindowStorage<boolean>(
 )
 
 // Details sidebar active tab (per-window, persisted)
-export type DetailsSidebarTab = "details" | "files"
+export type DetailsSidebarTab = "details" | "files" | "search"
 
 export const detailsSidebarTabAtom = atomWithWindowStorage<DetailsSidebarTab>(
   "overview:sidebarTab",

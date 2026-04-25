@@ -65,6 +65,28 @@ interface FileEntry {
   type: "file" | "folder"
 }
 
+// Content-search streaming types
+interface SearchLineMatch {
+  line: number      // 1-based line number
+  col: number       // 0-based column offset of the match within the line
+  length: number    // length of the matched text
+  snippet: string   // up to 300 chars of the matched line
+}
+
+interface SearchFileMatch {
+  path: string      // relative path inside the project
+  matches: SearchLineMatch[]
+}
+
+interface SearchBatch {
+  files: SearchFileMatch[]
+  totalMatches: number
+  scannedFiles: number
+  totalFiles: number
+  done: boolean
+  truncated: boolean
+}
+
 // Cache for file and folder listings (bounded LRU)
 const MAX_CACHE_ENTRIES = 20
 const fileListCache = new Map<string, { entries: FileEntry[]; timestamp: number }>()
@@ -121,6 +143,9 @@ async function scanDirectory(
     for (const entry of dirEntries) {
       const fullPath = join(currentPath, entry.name)
       const relativePath = relative(rootPath, fullPath)
+
+      // Skip symlinks to avoid loops and walking outside the project
+      if (entry.isSymbolicLink()) continue
 
       if (entry.isDirectory()) {
         // Skip ignored directories
@@ -425,6 +450,135 @@ export const filesRouter = router({
 
         return () => {
           watcher.close()
+        }
+      })
+    }),
+
+  /**
+   * Stream content-search matches across a project directory.
+   * Reuses the same ignored-dirs/files filter as the file tree.
+   */
+  searchContent: publicProcedure
+    .input(
+      z.object({
+        projectPath: z.string(),
+        query: z.string().min(1),
+        maxResults: z.number().min(1).max(5000).default(500),
+        maxFileBytes: z.number().min(1024).max(10 * 1024 * 1024).default(1_000_000),
+      })
+    )
+    .subscription(({ input }) => {
+      return observable<SearchBatch>((emit) => {
+        let cancelled = false
+
+        const run = async () => {
+          try {
+            const entries = await getEntryList(input.projectPath)
+            const files = entries.filter((e) => e.type === "file")
+            const needle = input.query.toLowerCase()
+            const needleLen = input.query.length
+            let totalMatches = 0
+            let scannedFiles = 0
+            let buffered: SearchFileMatch[] = []
+            let lastFlush = Date.now()
+            let truncated = false
+
+            const flush = (force: boolean) => {
+              if (!buffered.length && !force) return
+              const batch: SearchBatch = {
+                files: buffered,
+                totalMatches,
+                scannedFiles,
+                totalFiles: files.length,
+                done: false,
+                truncated,
+              }
+              buffered = []
+              lastFlush = Date.now()
+              emit.next(batch)
+            }
+
+            for (const f of files) {
+              if (cancelled) return
+              scannedFiles++
+
+              if (totalMatches >= input.maxResults) {
+                truncated = true
+                break
+              }
+
+              const abs = join(input.projectPath, f.path)
+              try {
+                const st = await stat(abs)
+                if (st.size > input.maxFileBytes) continue
+
+                const buf = await readFile(abs)
+                // Binary check (matches readTextFile heuristic, slightly smaller window)
+                if (buf.subarray(0, 4096).includes(0)) continue
+
+                const original = buf.toString("utf-8")
+                const haystack = original.toLowerCase()
+                if (haystack.indexOf(needle) === -1) continue
+
+                // Walk lines and collect matches for this file
+                const lines = original.split("\n")
+                const fileMatches: SearchLineMatch[] = []
+                for (let i = 0; i < lines.length; i++) {
+                  if (totalMatches >= input.maxResults) {
+                    truncated = true
+                    break
+                  }
+                  const line = lines[i]!
+                  const lineLower = line.toLowerCase()
+                  const col = lineLower.indexOf(needle)
+                  if (col === -1) continue
+                  fileMatches.push({
+                    line: i + 1,
+                    col,
+                    length: needleLen,
+                    snippet: line.length > 300 ? line.slice(0, 300) : line,
+                  })
+                  totalMatches++
+                }
+
+                if (fileMatches.length) {
+                  buffered.push({ path: f.path, matches: fileMatches })
+                }
+              } catch {
+                // Skip unreadable files silently
+              }
+
+              // Flush periodically so the UI shows progress
+              if (
+                buffered.length >= 25 ||
+                Date.now() - lastFlush > 50
+              ) {
+                flush(false)
+              }
+            }
+
+            if (cancelled) return
+            // Final flush + done
+            emit.next({
+              files: buffered,
+              totalMatches,
+              scannedFiles,
+              totalFiles: files.length,
+              done: true,
+              truncated,
+            })
+            emit.complete()
+          } catch (error) {
+            if (!cancelled) {
+              emit.error(error instanceof Error ? error : new Error(String(error)))
+            }
+          }
+        }
+
+        run()
+
+        return () => {
+          cancelled = true
         }
       })
     }),
