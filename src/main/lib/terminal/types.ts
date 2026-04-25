@@ -15,6 +15,13 @@ export interface TerminalSession {
 	shell: string
 	startTime: number
 	usedFallback: boolean
+	/**
+	 * Set when the user (or app shutdown) explicitly kills this session, so the
+	 * exit handler can skip the "crashed-quickly → recover with fallback shell"
+	 * path. Without this a fast Stop click after spawning could resurrect a
+	 * fresh fallback shell at the same paneId, swallowing the next Run.
+	 */
+	intentionalKill?: boolean
 }
 
 export interface TerminalDataEvent {

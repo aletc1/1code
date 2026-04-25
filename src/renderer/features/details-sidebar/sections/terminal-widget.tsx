@@ -350,6 +350,7 @@ export const TerminalWidget = memo(function TerminalWidget({
                 paneId={activeTerminal.paneId}
                 cwd={cwd}
                 workspaceId={workspaceId}
+                initialCommands={activeTerminal.initialCommands}
                 initialCwd={cwd}
               />
             </motion.div>

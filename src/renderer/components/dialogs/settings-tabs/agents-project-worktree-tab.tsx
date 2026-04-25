@@ -27,6 +27,7 @@ import {
   AlertDialogTrigger,
 } from "../../ui/alert-dialog"
 import { toast } from "sonner"
+import type { WorktreeScript } from "../../../../main/lib/git/worktree-config"
 import { COMMAND_PROMPTS } from "../../../features/agents/commands"
 import {
   agentsSettingsDialogOpenAtom,
@@ -150,6 +151,7 @@ function ProjectDetail({ projectId }: { projectId: string }) {
   const [unixCommands, setUnixCommands] = useState<string[]>([])
   const [windowsCommands, setWindowsCommands] = useState<string[]>([])
   const [showPlatformSpecific, setShowPlatformSpecific] = useState(false)
+  const [scripts, setScripts] = useState<WorktreeScript[]>([])
 
   // Ref to track last saved state for dirty checking
   const savedConfigRef = useRef<string>("")
@@ -164,6 +166,7 @@ function ProjectDetail({ projectId }: { projectId: string }) {
       let newCommands: string[] = [""]
       let newUnix: string[] = []
       let newWin: string[] = []
+      let newScripts: WorktreeScript[] = []
 
       if (configData.config) {
         const isComment = (s: string) => s.trimStart().startsWith("#")
@@ -186,17 +189,23 @@ function ProjectDetail({ projectId }: { projectId: string }) {
         if (unix || win) {
           setShowPlatformSpecific(true)
         }
+
+        if (Array.isArray(configData.config.scripts)) {
+          newScripts = configData.config.scripts
+        }
       }
 
       setCommands(newCommands)
       setUnixCommands(newUnix)
       setWindowsCommands(newWin)
+      setScripts(newScripts)
 
       // Snapshot the initial state so doSave won't fire on first render
       savedConfigRef.current = JSON.stringify({
         commands: newCommands,
         unixCommands: newUnix,
         windowsCommands: newWin,
+        scripts: newScripts,
         saveTarget: newSaveTarget,
       })
       configReadyRef.current = true
@@ -206,10 +215,10 @@ function ProjectDetail({ projectId }: { projectId: string }) {
   const doSave = useCallback(() => {
     if (!projectId || !configReadyRef.current) return
 
-    const currentState = JSON.stringify({ commands, unixCommands, windowsCommands, saveTarget })
+    const currentState = JSON.stringify({ commands, unixCommands, windowsCommands, scripts, saveTarget })
     if (currentState === savedConfigRef.current) return
 
-    const config: Record<string, string[]> = {}
+    const config: Record<string, unknown> = {}
     const filteredCommands = commands.filter((c) => c.trim())
     const filteredUnix = unixCommands.filter((c) => c.trim())
     const filteredWin = windowsCommands.filter((c) => c.trim())
@@ -218,9 +227,25 @@ function ProjectDetail({ projectId }: { projectId: string }) {
     if (filteredUnix.length > 0) config["setup-worktree-unix"] = filteredUnix
     if (filteredWin.length > 0) config["setup-worktree-windows"] = filteredWin
 
-    saveMutation.mutate({ projectId, config, target: saveTarget })
+    // Filter out empty rows and dedupe by trimmed name; surface the conflict.
+    const trimmed = scripts
+      .map((s) => ({ name: s.name.trim(), command: s.command.trim() }))
+      .filter((s) => s.name && s.command)
+    const seen = new Set<string>()
+    const uniq: WorktreeScript[] = []
+    for (const s of trimmed) {
+      if (seen.has(s.name)) {
+        toast.error(`Duplicate script name: "${s.name}" — keeping the first one`)
+        continue
+      }
+      seen.add(s.name)
+      uniq.push(s)
+    }
+    if (uniq.length > 0) config.scripts = uniq
+
+    saveMutation.mutate({ projectId, config: config as Parameters<typeof saveMutation.mutate>[0]["config"], target: saveTarget })
     savedConfigRef.current = currentState
-  }, [projectId, commands, unixCommands, windowsCommands, saveTarget, saveMutation])
+  }, [projectId, commands, unixCommands, windowsCommands, scripts, saveTarget, saveMutation])
 
   const updateCommand = (index: number, value: string, list: string[], setter: (v: string[]) => void) => {
     const newList = [...list]
@@ -242,10 +267,27 @@ function ProjectDetail({ projectId }: { projectId: string }) {
       pendingSaveRef.current = false
       doSave()
     }
-  }, [commands, unixCommands, windowsCommands, saveTarget, doSave])
+  }, [commands, unixCommands, windowsCommands, scripts, saveTarget, doSave])
 
   const addCommand = (list: string[], setter: (v: string[]) => void) => {
     setter([...list, ""])
+  }
+
+  const updateScriptField = (
+    index: number,
+    field: "name" | "command",
+    value: string,
+  ) => {
+    setScripts((prev) => prev.map((s, i) => (i === index ? { ...s, [field]: value } : s)))
+  }
+
+  const removeScript = (index: number) => {
+    setScripts((prev) => prev.filter((_, i) => i !== index))
+    pendingSaveRef.current = true
+  }
+
+  const addScript = () => {
+    setScripts((prev) => [...prev, { name: "", command: "" }])
   }
 
 
@@ -547,6 +589,83 @@ function ProjectDetail({ projectId }: { projectId: string }) {
                 </button>
               </div>
             )}
+          </div>
+        </div>
+
+        {/* ── Scripts ── */}
+        <div>
+          <div className="flex items-center justify-between mb-2">
+            <h4 className="text-sm font-medium text-foreground">Scripts</h4>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="gap-1.5 shrink-0"
+              onClick={() => {
+                const prompt = COMMAND_PROMPTS["scripts-fill"]
+                if (prompt && projectId) {
+                  createChatMutation.mutate({
+                    projectId,
+                    name: "Scripts",
+                    initialMessageParts: [{ type: "text", text: prompt }],
+                    useWorktree: false,
+                    mode: "agent",
+                  })
+                }
+              }}
+              disabled={!projectId || createChatMutation.isPending}
+            >
+              <AIPenIcon className="h-3.5 w-3.5" />
+              Fill with AI
+            </Button>
+          </div>
+          <div className="bg-background rounded-lg border border-border overflow-hidden">
+            <div className="p-4 space-y-3">
+              <div>
+                <span className="text-sm font-medium text-foreground">Runnable scripts</span>
+                <p className="text-sm text-muted-foreground">
+                  Each script appears in the Scripts widget with a Run/Stop button. Names must be unique.
+                </p>
+              </div>
+              <div className="space-y-2">
+                {scripts.length === 0 && (
+                  <p className="text-sm text-muted-foreground italic">No scripts yet.</p>
+                )}
+                {scripts.map((script, i) => (
+                  <div key={i} className="flex items-center gap-2">
+                    <Input
+                      value={script.name}
+                      onChange={(e) => updateScriptField(i, "name", e.target.value)}
+                      onBlur={doSave}
+                      placeholder="dev"
+                      className="w-32 font-mono text-sm"
+                    />
+                    <Input
+                      value={script.command}
+                      onChange={(e) => updateScriptField(i, "command", e.target.value)}
+                      onBlur={doSave}
+                      placeholder="bun run dev"
+                      className="flex-1 font-mono text-sm"
+                    />
+                    <button
+                      type="button"
+                      className="h-8 w-8 flex items-center justify-center rounded-md text-muted-foreground hover:text-destructive transition-colors"
+                      onClick={() => removeScript(i)}
+                      aria-label={`Remove ${script.name || "script"}`}
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+              <button
+                type="button"
+                className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors"
+                onClick={addScript}
+              >
+                <Plus className="h-3.5 w-3.5" />
+                Add script
+              </button>
+            </div>
           </div>
         </div>
 

@@ -29,6 +29,31 @@ export function isSharedTerminalScope(scopeKey: string): boolean {
 }
 
 /**
+ * Sanitize an arbitrary script name into a stable id segment for paneIds.
+ * Lowercase, alphanumeric and hyphens only. Empty strings collapse to "script".
+ */
+export function sanitizeScriptId(name: string): string {
+  const safe = name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "")
+  return safe || "script"
+}
+
+/**
+ * Build a deterministic paneId for a script terminal so the widget can locate
+ * and kill the terminal it spawned (and so a second Run click is a no-op).
+ */
+export function getScriptPaneId(scopeKey: string, scriptName: string): string {
+  return `${scopeKey}:term:script-${sanitizeScriptId(scriptName)}`
+}
+
+/**
+ * Build the renderer-side TerminalInstance.id for a script terminal.
+ * Uses the same sanitized form so a script's tab is also stable across reloads.
+ */
+export function getScriptTerminalId(scriptName: string): string {
+  return `script-${sanitizeScriptId(scriptName)}`
+}
+
+/**
  * Escape file paths for shell usage.
  * Wraps paths containing spaces in quotes.
  *

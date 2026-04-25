@@ -43,6 +43,7 @@ export type BuiltinCommandAction =
   | { type: "security-review" }
   | { type: "commit" }
   | { type: "worktree-setup" }
+  | { type: "scripts-fill" }
   | { type: "init" }
   | { type: "simplify" }
 

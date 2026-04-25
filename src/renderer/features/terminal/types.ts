@@ -42,4 +42,6 @@ export interface TerminalInstance {
   name: string
   /** Creation timestamp */
   createdAt: number
+  /** Optional commands to run on first attach. Persists so the right command runs after a renderer reload. */
+  initialCommands?: string[]
 }

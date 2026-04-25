@@ -1034,6 +1034,27 @@ if (gotTheLock) {
     console.log("[App] Shutting down...")
     cancelAllPendingOAuth()
 
+    // Kill all live terminals and their child processes (e.g. dev servers
+    // spawned via `bun run dev`) so we don't leak orphans after Electron exits.
+    // Bounded so a stuck pty can't block the whole quit.
+    const TERMINAL_CLEANUP_TIMEOUT_MS = 2000
+    try {
+      const { terminalManager } = await import("./lib/terminal/manager")
+      await Promise.race([
+        terminalManager.cleanup(),
+        new Promise<void>((resolve) =>
+          setTimeout(() => {
+            console.warn(
+              "[App] terminalManager.cleanup() exceeded timeout; continuing shutdown",
+            )
+            resolve()
+          }, TERMINAL_CLEANUP_TIMEOUT_MS),
+        ),
+      ])
+    } catch (err) {
+      console.warn("[App] terminalManager.cleanup() threw during shutdown:", err)
+    }
+
     // Bound the watcher cleanup so a hung chokidar instance can't block quit.
     // 1500ms is enough for well-behaved close handlers; OS will reclaim handles
     // if we have to move on without them.
