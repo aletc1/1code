@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useAtom, useAtomValue, useSetAtom } from "jotai"
-import { ArrowUpRight, TerminalSquare, Box, ListTodo, GitPullRequest, Activity } from "lucide-react"
+import { ArrowUpRight, TerminalSquare, Box, ListTodo, GitPullRequest, Activity, Info, Folder, Search } from "lucide-react"
 import { ResizableSidebar } from "@/components/ui/resizable-sidebar"
 import { Button } from "@/components/ui/button"
 import {
@@ -367,7 +367,10 @@ export function DetailsSidebar({
                     : "text-muted-foreground hover:text-foreground",
                 )}
               >
-                Details
+                <span className="flex items-center gap-1.5">
+                  <Info className="size-3.5" />
+                  Details
+                </span>
               </button>
               <button
                 type="button"
@@ -379,7 +382,10 @@ export function DetailsSidebar({
                     : "text-muted-foreground hover:text-foreground",
                 )}
               >
-                Files
+                <span className="flex items-center gap-1.5">
+                  <Folder className="size-3.5" />
+                  Files
+                </span>
               </button>
               <button
                 type="button"
@@ -391,7 +397,10 @@ export function DetailsSidebar({
                     : "text-muted-foreground hover:text-foreground",
                 )}
               >
-                Search
+                <span className="flex items-center gap-1.5">
+                  <Search className="size-3.5" />
+                  Search
+                </span>
               </button>
             </div>
           </div>
