@@ -72,7 +72,6 @@ export function DockShell({ onApiReady, className }: DockShellProps) {
       components={dockviewComponents}
       onReady={handleReady}
       rightHeaderActionsComponent={DockHeaderActions}
-      singleTabMode="fullwidth"
       theme={dockviewTheme}
     />
   )
