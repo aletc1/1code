@@ -3,18 +3,10 @@ import Editor from "@monaco-editor/react"
 import { useTheme } from "next-themes"
 import { useAtom } from "jotai"
 import { useAtomValue } from "jotai"
-import { Loader2, AlertCircle, Check, X } from "lucide-react"
+import { Loader2, AlertCircle } from "lucide-react"
 import { Button } from "@/components/ui/button"
-import {
-  IconCloseSidebarRight,
-  IconSidePeek,
-  IconCenterPeek,
-  IconFullPage,
-  MarkdownIcon,
-  CodeIcon,
-} from "@/components/ui/icons"
+import { MarkdownIcon, CodeIcon } from "@/components/ui/icons"
 import { Kbd } from "@/components/ui/kbd"
-import { getFileIconByExtension } from "../../agents/mentions/agents-file-mention"
 import {
   Tooltip,
   TooltipContent,
@@ -27,22 +19,9 @@ import { useResolvedHotkeyDisplay } from "@/lib/hotkeys"
 import { APP_META } from "../../../../shared/external-apps"
 import { ChatMarkdownRenderer } from "@/components/chat-markdown-renderer"
 import { CopyButton } from "../../agents/ui/message-action-buttons"
-import {
-  DropdownMenu,
-  DropdownMenuTrigger,
-  DropdownMenuContent,
-  DropdownMenuItem,
-} from "@/components/ui/dropdown-menu"
 import { EDITOR_ICONS } from "@/lib/editor-icons"
-import { fileViewerWordWrapAtom, fileViewerDisplayModeAtom } from "../../agents/atoms"
-
-const FILE_VIEWER_MODES = [
-  { value: "side-peek" as const, label: "Sidebar", Icon: IconSidePeek },
-  { value: "center-peek" as const, label: "Dialog", Icon: IconCenterPeek },
-  { value: "full-page" as const, label: "Fullscreen", Icon: IconFullPage },
-]
+import { fileViewerWordWrapAtom } from "../../agents/atoms"
 import { defaultEditorOptions, getMonacoTheme } from "./monaco-config"
-import { getFileName } from "../utils/file-utils"
 
 interface MarkdownViewerProps {
   filePath: string
@@ -55,7 +34,6 @@ export function MarkdownViewer({
   projectPath,
   onClose,
 }: MarkdownViewerProps) {
-  const fileName = getFileName(filePath)
   const { resolvedTheme } = useTheme()
   const monacoTheme = getMonacoTheme(resolvedTheme || "dark")
 
@@ -123,11 +101,9 @@ export function MarkdownViewer({
     return (
       <div className="flex flex-col h-full bg-background">
         <Header
-          fileName={fileName}
           filePath={filePath}
           showPreview={showPreview}
           onToggleView={handleToggleView}
-          onClose={onClose}
         />
         <div className="flex-1 flex items-center justify-center">
           <div className="flex flex-col items-center gap-3 text-muted-foreground">
@@ -152,11 +128,9 @@ export function MarkdownViewer({
     return (
       <div className="flex flex-col h-full bg-background">
         <Header
-          fileName={fileName}
           filePath={filePath}
           showPreview={showPreview}
           onToggleView={handleToggleView}
-          onClose={onClose}
         />
         <div className="flex-1 flex items-center justify-center p-4">
           <div className="flex flex-col items-center gap-3 text-center max-w-[300px]">
@@ -173,11 +147,9 @@ export function MarkdownViewer({
   return (
     <div className="flex flex-col h-full bg-background">
       <Header
-        fileName={fileName}
         filePath={filePath}
         showPreview={showPreview}
         onToggleView={handleToggleView}
-        onClose={onClose}
         content={content}
       />
       <div
@@ -211,22 +183,16 @@ export function MarkdownViewer({
 }
 
 function Header({
-  fileName,
   filePath,
   showPreview,
   onToggleView,
-  onClose,
   content,
 }: {
-  fileName: string
   filePath: string
   showPreview: boolean
   onToggleView: () => void
-  onClose: () => void
   content?: string
 }) {
-  const Icon = getFileIconByExtension(filePath)
-  const [displayMode, setDisplayMode] = useAtom(fileViewerDisplayModeAtom)
   const preferredEditor = useAtomValue(preferredEditorAtom)
   const editorMeta = APP_META[preferredEditor]
   const openInAppMutation = trpc.external.openInApp.useMutation()
@@ -241,62 +207,14 @@ function Header({
 
   return (
     <div
-      className="@container flex items-center justify-between px-2 h-10 border-b border-border/50 bg-background flex-shrink-0"
+      className="@container flex items-center justify-end px-2 h-10 border-b border-border/50 bg-background flex-shrink-0"
       style={{
         // @ts-expect-error - WebKit-specific property
         WebkitAppRegion: "no-drag",
       }}
     >
-      {/* Left side: Close + mode switcher + file info */}
-      <div className="flex items-center gap-1 min-w-0 flex-1">
-        <Button
-          variant="ghost"
-          size="sm"
-          className="h-6 w-6 p-0 flex-shrink-0 hover:bg-foreground/10"
-          onClick={onClose}
-        >
-          {displayMode === "side-peek" ? (
-            <IconCloseSidebarRight className="size-4 text-muted-foreground" />
-          ) : (
-            <X className="size-4 text-muted-foreground" />
-          )}
-        </Button>
-        {/* Display mode switcher */}
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button
-              variant="ghost"
-              size="sm"
-              className="h-6 w-6 p-0 flex-shrink-0 hover:bg-foreground/10"
-            >
-              {(() => {
-                const CurrentIcon = FILE_VIEWER_MODES.find((m) => m.value === displayMode)?.Icon ?? IconSidePeek
-                return <CurrentIcon className="size-4 text-muted-foreground" />
-              })()}
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="start" className="min-w-[140px]">
-            {FILE_VIEWER_MODES.map(({ value, label, Icon: ModeIcon }) => (
-              <DropdownMenuItem
-                key={value}
-                onClick={() => setDisplayMode(value)}
-                className="flex items-center gap-2"
-              >
-                <ModeIcon className="size-4 text-muted-foreground" />
-                <span className="flex-1">{label}</span>
-                {displayMode === value && (
-                  <Check className="size-4 text-muted-foreground ml-auto" />
-                )}
-              </DropdownMenuItem>
-            ))}
-          </DropdownMenuContent>
-        </DropdownMenu>
-        <div className="flex items-center gap-2 min-w-0 flex-1 ml-1">
-          {Icon && <Icon className="h-3.5 w-3.5 flex-shrink-0" />}
-          <span className="text-sm font-medium truncate">{fileName}</span>
-        </div>
-      </div>
-      {/* Right side: Actions */}
+      {/* Right-side actions only — dockview's tab provides the title +
+          close, and the tab icon already shows the file type. */}
       <div className="flex items-center gap-1 flex-shrink-0">
         {/* Open in editor */}
         <Tooltip delayDuration={500}>

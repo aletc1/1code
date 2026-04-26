@@ -1,4 +1,8 @@
-import type { DockviewApi, AddPanelOptions } from "dockview-react"
+import type {
+  DockviewApi,
+  AddPanelOptions,
+  DockviewGroupPanel,
+} from "dockview-react"
 import { panelIdFor, panelTitleFor, type PanelEntity } from "./atoms"
 
 export interface AddOrFocusOptions {
@@ -6,6 +10,13 @@ export interface AddOrFocusOptions {
   floating?: boolean
   /** When provided, used as the reference panel for splits. Defaults to the active panel. */
   referencePanelId?: string
+  /**
+   * When provided (and no splitDirection is set), the new panel becomes a
+   * tab inside this group. This is what header-action buttons pass to keep
+   * the new panel in the same group whose [+]/Chat/Terminal button was
+   * clicked, instead of landing on whichever group is globally active.
+   */
+  referenceGroup?: DockviewGroupPanel
 }
 
 export function addOrFocus(
@@ -38,6 +49,8 @@ export function addOrFocus(
       referencePanel: reference.id,
       direction: opts.splitDirection,
     }
+  } else if (opts.referenceGroup) {
+    options.position = { referenceGroup: opts.referenceGroup }
   }
 
   api.addPanel(options)

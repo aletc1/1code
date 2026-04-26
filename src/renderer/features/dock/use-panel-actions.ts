@@ -1,6 +1,7 @@
 import { useCallback } from "react"
 import { useAtomValue, useSetAtom } from "jotai"
 import { toast } from "sonner"
+import type { DockviewGroupPanel } from "dockview-react"
 import {
   selectedAgentChatIdAtom,
   currentPlanPathAtomFamily,
@@ -49,8 +50,15 @@ export interface PanelActions {
  * Each `open*` is a no-op when the underlying entity isn't available; the
  * matching `can*` flag tells the caller whether to render the trigger as
  * enabled or disabled.
+ *
+ * `sourceGroup` lets a caller (typically a per-group header) pin new panels
+ * to *its* group instead of dockview's globally active group — without it
+ * the [+] button in group A would create a panel in group B if group B is
+ * the focused one.
  */
-export function usePanelActions(): PanelActions {
+export function usePanelActions(
+  sourceGroup?: DockviewGroupPanel,
+): PanelActions {
   const dockApi = useDockApi()
   const chatId = useAtomValue(selectedAgentChatIdAtom)
   const activeSubChatId = useAgentSubChatStore((s) => s.activeSubChatId)
@@ -101,10 +109,27 @@ export function usePanelActions(): PanelActions {
         }
       },
     )
-    // Wire it into the store so ChatPanelSync opens a `chat:` panel.
+    // Wire it into the store. ChatPanelSync watches openSubChatIds and
+    // would normally add the dockview panel itself (without a group hint,
+    // so dockview drops it on the globally-active group). To honor
+    // sourceGroup, we add the panel here synchronously when we have a
+    // dock api + source group; ChatPanelSync's "if panel exists, skip"
+    // branch then leaves it alone.
     const store = useAgentSubChatStore.getState()
     store.addToOpenSubChats(newId)
     store.setActiveSubChat(newId)
+    if (dockApi && sourceGroup) {
+      const panelId = `chat:${newId}`
+      if (!dockApi.getPanel(panelId)) {
+        dockApi.addPanel({
+          id: panelId,
+          component: "chat",
+          title: "New Chat",
+          params: { subChatId: newId, chatId, name: "New Chat" },
+          position: { referenceGroup: sourceGroup },
+        })
+      }
+    }
     // Persist to DB in the background; roll back on error.
     createSubChat
       .mutateAsync({ id: newId, chatId, mode: defaultMode })
@@ -125,7 +150,7 @@ export function usePanelActions(): PanelActions {
         useAgentSubChatStore.getState().removeFromOpenSubChats(newId)
         toast.error("Failed to create chat")
       })
-  }, [chatId, defaultMode, utils, createSubChat])
+  }, [chatId, defaultMode, utils, createSubChat, dockApi, sourceGroup])
 
   const openTerminal = useCallback(() => {
     if (!dockApi || !chatId || !worktreePath) return
@@ -140,10 +165,14 @@ export function usePanelActions(): PanelActions {
       [chatId]: [...(prev[chatId] ?? []), inst],
     }))
     setActiveTerminalIds((prev) => ({ ...prev, [chatId]: id }))
-    addOrFocus(dockApi, {
-      kind: "terminal",
-      data: { paneId, name, chatId, cwd: worktreePath, workspaceId: chatId },
-    })
+    addOrFocus(
+      dockApi,
+      {
+        kind: "terminal",
+        data: { paneId, name, chatId, cwd: worktreePath, workspaceId: chatId },
+      },
+      { referenceGroup: sourceGroup },
+    )
   }, [
     dockApi,
     chatId,
@@ -152,31 +181,48 @@ export function usePanelActions(): PanelActions {
     allTerminals,
     setTerminals,
     setActiveTerminalIds,
+    sourceGroup,
   ])
 
   const openPlan = useCallback(() => {
     if (!dockApi || !chatId || !planPath) return
     const effectiveChatId = activeSubChatId ?? chatId
-    addOrFocus(dockApi, {
-      kind: "plan",
-      data: { chatId: effectiveChatId, planPath },
-    })
-  }, [dockApi, chatId, planPath, activeSubChatId])
+    addOrFocus(
+      dockApi,
+      {
+        kind: "plan",
+        data: { chatId: effectiveChatId, planPath },
+      },
+      { referenceGroup: sourceGroup },
+    )
+  }, [dockApi, chatId, planPath, activeSubChatId, sourceGroup])
 
   const openDiff = useCallback(() => {
     if (!dockApi || !chatId) return
-    addOrFocus(dockApi, { kind: "diff", data: { chatId } })
-  }, [dockApi, chatId])
+    addOrFocus(
+      dockApi,
+      { kind: "diff", data: { chatId } },
+      { referenceGroup: sourceGroup },
+    )
+  }, [dockApi, chatId, sourceGroup])
 
   const openSearch = useCallback(() => {
     if (!dockApi || !projectId) return
-    addOrFocus(dockApi, { kind: "search", data: { projectId } })
-  }, [dockApi, projectId])
+    addOrFocus(
+      dockApi,
+      { kind: "search", data: { projectId } },
+      { referenceGroup: sourceGroup },
+    )
+  }, [dockApi, projectId, sourceGroup])
 
   const openFilesTree = useCallback(() => {
     if (!dockApi || !projectId) return
-    addOrFocus(dockApi, { kind: "files-tree", data: { projectId } })
-  }, [dockApi, projectId])
+    addOrFocus(
+      dockApi,
+      { kind: "files-tree", data: { projectId } },
+      { referenceGroup: sourceGroup },
+    )
+  }, [dockApi, projectId, sourceGroup])
 
   const resetLayout = useCallback(() => {
     try {

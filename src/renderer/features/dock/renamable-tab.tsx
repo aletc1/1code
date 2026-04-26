@@ -1,12 +1,23 @@
-import { forwardRef, useEffect, useRef, useState } from "react"
-import { X } from "lucide-react"
+import { forwardRef, useEffect, useRef, useState, type ComponentType } from "react"
+import {
+  X,
+  MessageSquare,
+  SquareTerminal,
+  FileText,
+  GitCompare,
+  Search,
+  FolderTree,
+  type LucideIcon,
+} from "lucide-react"
 import type { IDockviewPanelHeaderProps } from "dockview-react"
 import { useSetAtom } from "jotai"
 import { trpc } from "../../lib/trpc"
 import { useAgentSubChatStore } from "../agents/stores/sub-chat-store"
 import { terminalsAtom } from "../terminal/atoms"
 import { cn } from "../../lib/utils"
+import { getFileIconByExtension } from "../agents/mentions/agents-file-mention"
 import { requestArchiveChatTab } from "./chat-tab-archive"
+import { requestCloseTerminalTab } from "./terminal-tab-close"
 
 /**
  * Default dockview tab component used by every panel kind. The body renders
@@ -101,6 +112,7 @@ export function RenamableTab(props: IDockviewPanelHeaderProps) {
         startEdit()
       }}
     >
+      <TabIcon panelId={api.id} title={title} />
       {editing ? (
         <RenameInput
           ref={inputRef}
@@ -138,6 +150,10 @@ export function RenamableTab(props: IDockviewPanelHeaderProps) {
           if (closeDisabled) return
           if (kind === "chat") {
             requestArchiveChatTab(api.id)
+            return
+          }
+          if (kind === "terminal") {
+            requestCloseTerminalTab(api.id)
             return
           }
           api.close()
@@ -233,6 +249,55 @@ async function dispatchRename(panelId: string, nextName: string): Promise<void> 
 function panelKind(panelId: string): "chat" | "terminal" | null {
   if (panelId.startsWith("chat:")) return "chat"
   if (panelId.startsWith("terminal:")) return "terminal"
+  return null
+}
+
+/**
+ * Renders the leading icon of a dockview tab. Each panel kind gets a small
+ * lucide-react glyph; file panels use the same per-extension icon set the
+ * file mention picker uses, picked from the absolute path embedded in the
+ * panel id (`file:${absolutePath}`). Unknown kinds render nothing — the
+ * tab still has its title.
+ */
+function TabIcon({
+  panelId,
+  title,
+}: {
+  panelId: string
+  title: string
+}) {
+  if (panelId.startsWith("chat:") || panelId === "main") {
+    return <MessageSquare className="h-3 w-3 flex-shrink-0 opacity-70" />
+  }
+  if (panelId.startsWith("chat-new:")) {
+    return <MessageSquare className="h-3 w-3 flex-shrink-0 opacity-70" />
+  }
+  if (panelId.startsWith("terminal:")) {
+    return <SquareTerminal className="h-3 w-3 flex-shrink-0 opacity-70" />
+  }
+  if (panelId.startsWith("plan:")) {
+    return <FileText className="h-3 w-3 flex-shrink-0 opacity-70" />
+  }
+  if (panelId.startsWith("diff:")) {
+    return <GitCompare className="h-3 w-3 flex-shrink-0 opacity-70" />
+  }
+  if (panelId.startsWith("search:")) {
+    return <Search className="h-3 w-3 flex-shrink-0 opacity-70" />
+  }
+  if (panelId.startsWith("files-tree:")) {
+    return <FolderTree className="h-3 w-3 flex-shrink-0 opacity-70" />
+  }
+  if (panelId.startsWith("file:")) {
+    // The id encodes the absolute path; the title is the basename. Either
+    // works for getFileIconByExtension — prefer the basename for short paths.
+    const fileNameForLookup = title || panelId.slice("file:".length)
+    const Icon = getFileIconByExtension(fileNameForLookup) as
+      | ComponentType<{ className?: string }>
+      | LucideIcon
+      | null
+    if (!Icon) return null
+    return <Icon className="h-3 w-3 flex-shrink-0" />
+  }
   return null
 }
 

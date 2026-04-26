@@ -24,6 +24,7 @@ export { DockHeaderActions } from "./dock-header-actions"
 export { ChatPanelSync } from "./chat-panel-sync"
 export { RenamableTab, RenameDispatchHost } from "./renamable-tab"
 export { ChatTabArchiveHost } from "./chat-tab-archive"
+export { TerminalTabCloseHost } from "./terminal-tab-close"
 export {
   loadLayoutSnapshot,
   saveLayoutSnapshot,

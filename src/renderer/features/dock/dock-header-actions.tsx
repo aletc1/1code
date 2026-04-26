@@ -2,8 +2,6 @@ import {
   Plus,
   FileText,
   FileDiff,
-  Search,
-  FolderTree,
   RotateCcw,
   MessageSquare,
   Terminal as TerminalIcon,
@@ -38,8 +36,11 @@ import { usePanelActions } from "./use-panel-actions"
  * Icon buttons match the existing app-wide pattern (h-6 w-6, h-4 w-4 icon)
  * used by the chats sidebar so all top-row buttons line up.
  */
-export function DockHeaderActions(_props: IDockviewHeaderActionsProps) {
-  const actions = usePanelActions()
+export function DockHeaderActions(props: IDockviewHeaderActionsProps) {
+  // `props.group` is the group whose tab strip rendered this button bar —
+  // pass it through so each [+]/Chat/Terminal click adds panels into *that*
+  // group instead of dockview's globally-active group.
+  const actions = usePanelActions(props.group)
   const [isDetailsOpen, setIsDetailsOpen] = useAtom(detailsSidebarOpenAtom)
   const toggleDetailsHotkey = useResolvedHotkeyDisplay("toggle-details")
 
@@ -82,21 +83,6 @@ export function DockHeaderActions(_props: IDockviewHeaderActionsProps) {
           <TooltipContent side="bottom">Open a panel</TooltipContent>
         </Tooltip>
         <DropdownMenuContent align="end" className="w-56">
-          <DropdownMenuItem
-            disabled={!actions.canOpenFilesTree}
-            onClick={actions.openFilesTree}
-          >
-            <FolderTree className="h-4 w-4 mr-2" />
-            Files Tree
-          </DropdownMenuItem>
-          <DropdownMenuItem
-            disabled={!actions.canOpenSearch}
-            onClick={actions.openSearch}
-          >
-            <Search className="h-4 w-4 mr-2" />
-            Search
-          </DropdownMenuItem>
-          <DropdownMenuSeparator />
           <DropdownMenuItem
             disabled={!actions.canOpenPlan}
             onClick={actions.openPlan}

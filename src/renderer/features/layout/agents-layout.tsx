@@ -50,6 +50,7 @@ import {
   ChatPanelSync,
   RenameDispatchHost,
   ChatTabArchiveHost,
+  TerminalTabCloseHost,
   loadLayoutSnapshot,
   makeDebouncedSaver,
   tryRestore,
@@ -601,6 +602,7 @@ export function AgentsLayout() {
         <ChatPanelSync />
         <RenameDispatchHost />
         <ChatTabArchiveHost />
+        <TerminalTabCloseHost />
         <ShellProvider value={shellCtxValue}>
           <div className="flex flex-col w-full h-full relative overflow-hidden bg-background select-none">
             {/* Windows-only custom title bar (frameless window with min/max/close).

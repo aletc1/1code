@@ -11,17 +11,8 @@ import {
   MoreHorizontal,
   WrapText,
   Map,
-  Check,
-  X,
 } from "lucide-react"
-import { getFileIconByExtension } from "../../agents/mentions/agents-file-mention"
-import {
-  IconCloseSidebarRight,
-  IconSidePeek,
-  IconCenterPeek,
-  IconFullPage,
-  IconLineNumbers,
-} from "@/components/ui/icons"
+import { IconLineNumbers } from "@/components/ui/icons"
 import { Kbd } from "@/components/ui/kbd"
 import { Button } from "@/components/ui/button"
 import {
@@ -47,13 +38,10 @@ import {
   fileViewerWordWrapAtom,
   fileViewerMinimapAtom,
   fileViewerLineNumbersAtom,
-  fileViewerDisplayModeAtom,
   fileViewerScrollTargetAtom,
-  type FileViewerDisplayMode,
 } from "../../agents/atoms"
 import { useFileContent, getErrorMessage } from "../hooks/use-file-content"
 import { getMonacoLanguage, getFileViewerType } from "../utils/language-map"
-import { getFileName } from "../utils/file-utils"
 import { defaultEditorOptions, getMonacoTheme, registerMonacoTheme } from "./monaco-config"
 import { useVSCodeTheme } from "@/lib/themes"
 import { ImageViewer } from "./image-viewer"
@@ -63,57 +51,6 @@ interface FileViewerSidebarProps {
   filePath: string
   projectPath: string
   onClose: () => void
-}
-
-function FileIcon({ filePath }: { filePath: string }) {
-  const Icon = getFileIconByExtension(filePath)
-  return Icon ? <Icon className="h-3.5 w-3.5" /> : null
-}
-
-const FILE_VIEWER_MODES = [
-  { value: "side-peek" as const, label: "Sidebar", Icon: IconSidePeek },
-  { value: "center-peek" as const, label: "Dialog", Icon: IconCenterPeek },
-  { value: "full-page" as const, label: "Fullscreen", Icon: IconFullPage },
-]
-
-function FileViewerModeSwitcher({
-  mode,
-  onModeChange,
-}: {
-  mode: FileViewerDisplayMode
-  onModeChange: (mode: FileViewerDisplayMode) => void
-}) {
-  const currentMode = FILE_VIEWER_MODES.find((m) => m.value === mode) ?? FILE_VIEWER_MODES[0]
-  const CurrentIcon = currentMode.Icon
-
-  return (
-    <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <Button
-          variant="ghost"
-          size="sm"
-          className="h-6 w-6 p-0 flex-shrink-0 hover:bg-foreground/10"
-        >
-          <CurrentIcon className="size-4 text-muted-foreground" />
-        </Button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="start" className="min-w-[140px]">
-        {FILE_VIEWER_MODES.map(({ value, label, Icon }) => (
-          <DropdownMenuItem
-            key={value}
-            onClick={() => onModeChange(value)}
-            className="flex items-center gap-2"
-          >
-            <Icon className="size-4 text-muted-foreground" />
-            <span className="flex-1">{label}</span>
-            {mode === value && (
-              <Check className="size-4 text-muted-foreground ml-auto" />
-            )}
-          </DropdownMenuItem>
-        ))}
-      </DropdownMenuContent>
-    </DropdownMenu>
-  )
 }
 
 function LoadingSpinner() {
@@ -139,50 +76,16 @@ function ErrorDisplay({ error }: { error: string }) {
 }
 
 function UnsupportedViewer({
-  filePath,
-  onClose,
+  filePath: _filePath,
+  onClose: _onClose,
 }: {
   filePath: string
   onClose: () => void
 }) {
-  const fileName = getFileName(filePath)
-  const [displayMode, setDisplayMode] = useAtom(fileViewerDisplayModeAtom)
-
+  // Header was redundant inside dockview (tab provides title + close);
+  // unsupported files are rare so we just show the placeholder body.
   return (
     <div className="flex flex-col h-full bg-background">
-      <div
-        className="flex items-center justify-between px-2 h-10 border-b border-border/50 bg-background flex-shrink-0"
-        style={{
-          // @ts-expect-error - WebKit-specific property
-          WebkitAppRegion: "no-drag",
-        }}
-      >
-        <div className="flex items-center gap-1 min-w-0 flex-1">
-          {/* Close + mode switcher on the left */}
-          <Button
-            variant="ghost"
-            size="sm"
-            className="h-6 w-6 p-0 flex-shrink-0 hover:bg-foreground/10"
-            onClick={onClose}
-          >
-            {displayMode === "side-peek" ? (
-              <IconCloseSidebarRight className="size-4 text-muted-foreground" />
-            ) : (
-              <X className="size-4 text-muted-foreground" />
-            )}
-          </Button>
-          <FileViewerModeSwitcher
-            mode={displayMode}
-            onModeChange={setDisplayMode}
-          />
-          <div className="flex items-center gap-2 min-w-0 flex-1 ml-1">
-            <FileIcon filePath={filePath} />
-            <span className="text-sm font-medium truncate" title={filePath}>
-              {fileName}
-            </span>
-          </div>
-        </div>
-      </div>
       <div className="flex-1 flex items-center justify-center p-4">
         <div className="flex flex-col items-center gap-3 text-center max-w-[300px]">
           <FileWarning className="h-10 w-10 text-muted-foreground" />
@@ -194,20 +97,15 @@ function UnsupportedViewer({
 }
 
 function CodeViewerHeader({
-  fileName,
   filePath,
-  onClose,
   content,
 }: {
-  fileName: string
   filePath: string
-  onClose: () => void
   content?: string | null
 }) {
   const [wordWrap, setWordWrap] = useAtom(fileViewerWordWrapAtom)
   const [minimap, setMinimap] = useAtom(fileViewerMinimapAtom)
   const [lineNumbers, setLineNumbers] = useAtom(fileViewerLineNumbersAtom)
-  const [displayMode, setDisplayMode] = useAtom(fileViewerDisplayModeAtom)
   const preferredEditor = useAtomValue(preferredEditorAtom)
   const editorMeta = APP_META[preferredEditor]
   const openInAppMutation = trpc.external.openInApp.useMutation()
@@ -222,38 +120,16 @@ function CodeViewerHeader({
 
   return (
     <div
-      className="@container flex items-center justify-between px-2 h-10 border-b border-border/50 bg-background flex-shrink-0"
+      className="@container flex items-center justify-end px-2 h-10 border-b border-border/50 bg-background flex-shrink-0"
       style={{
         // @ts-expect-error - WebKit-specific property
         WebkitAppRegion: "no-drag",
       }}
     >
-      {/* Left side: Close button + mode switcher + file info */}
-      <div className="flex items-center gap-1 min-w-0 flex-1">
-        <Button
-          variant="ghost"
-          size="sm"
-          className="h-6 w-6 p-0 flex-shrink-0 hover:bg-foreground/10"
-          onClick={onClose}
-        >
-          {displayMode === "side-peek" ? (
-            <IconCloseSidebarRight className="size-4 text-muted-foreground" />
-          ) : (
-            <X className="size-4 text-muted-foreground" />
-          )}
-        </Button>
-        <FileViewerModeSwitcher
-          mode={displayMode}
-          onModeChange={setDisplayMode}
-        />
-        <div className="flex items-center gap-2 min-w-0 flex-1 ml-1">
-          <FileIcon filePath={filePath} />
-          <span className="text-sm font-medium truncate" title={filePath}>
-            {fileName}
-          </span>
-        </div>
-      </div>
-      {/* Right side: Actions */}
+      {/* Right-side actions only — dockview's tab header already provides
+          the title, the close button, and (via the tab icon) the file type.
+          The previous left-side close + mode switcher + filename block was
+          a leftover from the pre-dockview sidebar layout. */}
       <div className="flex items-center gap-1 flex-shrink-0">
         {/* Open in editor */}
         <Tooltip delayDuration={500}>
@@ -486,7 +362,6 @@ function CodeViewer({
   projectPath: string
   onClose: () => void
 }) {
-  const fileName = getFileName(filePath)
   const language = getMonacoLanguage(filePath)
   const { resolvedTheme } = useTheme()
   const { currentTheme } = useVSCodeTheme()
@@ -729,12 +604,7 @@ function CodeViewer({
   if (isLoading) {
     return (
       <div className="flex flex-col h-full bg-background">
-        <CodeViewerHeader
-          fileName={fileName}
-          filePath={filePath}
-
-          onClose={onClose}
-        />
+        <CodeViewerHeader filePath={filePath} />
         <LoadingSpinner />
       </div>
     )
@@ -743,12 +613,7 @@ function CodeViewer({
   if (error) {
     return (
       <div className="flex flex-col h-full bg-background">
-        <CodeViewerHeader
-          fileName={fileName}
-          filePath={filePath}
-
-          onClose={onClose}
-        />
+        <CodeViewerHeader filePath={filePath} />
         <ErrorDisplay error={getErrorMessage(error)} />
       </div>
     )
@@ -925,13 +790,7 @@ function CodeViewer({
           display: none !important;
         }
       `}</style>
-      <CodeViewerHeader
-        fileName={fileName}
-        filePath={filePath}
-
-        onClose={onClose}
-        content={content}
-      />
+      <CodeViewerHeader filePath={filePath} content={content} />
       <div
         ref={containerRef}
         className="flex-1 min-h-0 allow-text-selection"
