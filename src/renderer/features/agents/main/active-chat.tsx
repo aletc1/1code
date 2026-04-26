@@ -227,9 +227,12 @@ import { AgentsHeaderControls } from "../ui/agents-header-controls"
 import { ChatTitleEditor } from "../ui/chat-title-editor"
 import { MobileChatHeader } from "../ui/mobile-chat-header"
 import { QuickCommentInput } from "../ui/quick-comment-input"
-import { SubChatSelector } from "../ui/sub-chat-selector"
+// SubChatSelector removed — sub-chat tabs are dockview tabs now (see
+// [chat-panel.tsx]). The component file is kept because the agents-subchats
+// sidebar still uses parts of its rename/context-menu UX.
 import { SubChatStatusCard } from "../ui/sub-chat-status-card"
-import { SplitViewContainer, SplitDropZone } from "../ui/split-view-container"
+// SplitViewContainer / SplitDropZone removed — dockview groups now own
+// multi-pane chat layout. Drag a chat tab to a group's edge to split.
 import { TextSelectionPopover } from "../ui/text-selection-popover"
 import { autoRenameAgentChat } from "../utils/auto-rename"
 import { generateCommitToPrMessage, generatePrMessage, generateReviewMessage } from "../utils/pr-message"
@@ -7649,21 +7652,10 @@ Make sure to preserve all functionality from both branches when resolving confli
                           subChatsSidebarMode === "sidebar"
                         }
                       />
-                      <SubChatSelector
-                        onCreateNew={handleCreateNewSubChat}
-                        isMobile={false}
-                        onBackToChats={onBackToChats}
-                        onOpenPreview={onOpenPreview}
-                        canOpenPreview={canOpenPreview}
-                        onOpenDiff={canOpenDiff ? () => setIsDiffSidebarOpen(true) : undefined}
-                        canOpenDiff={canShowDiffButton}
-                        isDiffSidebarOpen={isDiffSidebarOpen}
-                        diffStats={diffStats}
-                        onOpenTerminal={() => setIsTerminalSidebarOpen(true)}
-                        canOpenTerminal={!!worktreePath}
-                        isTerminalOpen={isTerminalSidebarOpen}
-                        chatId={chatId}
-                      />
+                      {/* SubChatSelector removed — sub-chat tabs live in the
+                       * dockview tab strip now (see [chat-panel.tsx] and
+                       * [chat-panel-sync.tsx]). The internal strip used to
+                       * compete visually with dockview's own row. */}
                       {/* Open Locally button - desktop only, sandbox mode */}
                       {showOpenLocally && (
                         <Tooltip delayDuration={500}>
@@ -7795,166 +7787,37 @@ Make sure to preserve all functionality from both branches when resolving confli
             </div>
           )}
 
-          {/* Chat Content - Keep-alive: render all open tabs, hide inactive with CSS */}
-          {tabsToRender.length > 0 && agentChat ? (
+          {/* Chat Content — only the active sub-chat is mounted here. Other
+           * open sub-chats live in their own dockview panels (see
+           * [chat-panel.tsx]); dockview groups handle splits, so the previous
+           * SplitViewContainer + keep-alive opacity tricks are gone. */}
+          {tabsToRender.length > 0 && agentChat && activeSubChatId ? (
             <div className="relative flex-1 min-h-0">
-              {/* Loading gate: prevent getOrCreateChat() from caching empty messages before data is ready */}
               {isLocalChatLoading ? (
                 <div className="flex items-center justify-center h-full">
                   <IconSpinner className="h-6 w-6 animate-spin" />
                 </div>
-              ) : splitPaneIds.length >= 2 && !!activeSubChatId && splitPaneIds.includes(activeSubChatId) ? (
-                <SplitViewContainer
-                  panes={splitPaneIds.flatMap((paneId) => {
-                    const chat = getOrCreateChat(paneId)
-                    const isFirstSubChat = getFirstSubChatId(agentSubChats) === paneId
-                    const belongsToWorkspace = agentSubChats.some(sc => sc.id === paneId) ||
-                                              allSubChats.some(sc => sc.id === paneId)
-
-                    if (!chat || !belongsToWorkspace) return []
-
-                    return [{
-                      id: paneId,
-                      content: (
-                        <div
-                          className="h-full flex flex-col"
-                          onMouseDownCapture={() => {
-                            const store = useAgentSubChatStore.getState()
-                            if (store.activeSubChatId !== paneId) {
-                              // Mouse interaction already has an explicit target in this pane.
-                              // Suppress auto-focus to avoid stealing focus from clicked controls
-                              // (e.g. model selector popover trigger) on first click.
-                              appStore.set(suppressInputFocusAtom, true)
-                              store.setActiveSubChat(paneId)
-                            }
-                          }}
-                        >
-                          <ChatViewInner
-                            chat={chat}
-                            subChatId={paneId}
-                            parentChatId={chatId}
-                            provider={inferProviderFromMessages(paneId)}
-                            isFirstSubChat={isFirstSubChat}
-                            onAutoRename={handleAutoRename}
-                            onCreateNewSubChat={handleCreateNewSubChat}
-                            onProviderChange={handleProviderChange}
-                            teamId={selectedTeamId || undefined}
-                            repository={repository}
-                            streamId={agentChatStore.getStreamId(paneId)}
-                            isMobile={isMobileFullscreen}
-                            isSubChatsSidebarOpen={subChatsSidebarMode === "sidebar"}
-                            sandboxId={sandboxId || undefined}
-                            projectPath={worktreePath || undefined}
-                            isArchived={isArchived}
-                            onRestoreWorkspace={handleRestoreWorkspace}
-                            existingPrUrl={agentChat?.prUrl}
-                            isActive={paneId === activeSubChatId}
-                            isSplitPane={true}
-                            workspaceName={agentChat?.name ?? null}
-                            workspaceBranch={agentChat?.branch ?? null}
-                            workspaceRepoName={(agentChat as any)?.project?.gitRepo || (agentChat as any)?.project?.name || null}
-                          />
-                        </div>
-                      )
-                    }]
-                  })}
-                  hiddenTabs={
-                    <>
-                      {tabsToRender
-                        .filter(id => !splitPaneIds.includes(id))
-                        .map(subChatId => {
-                          const chat = getOrCreateChat(subChatId)
-                          const isFirstSubChat = getFirstSubChatId(agentSubChats) === subChatId
-                          const belongsToWorkspace = agentSubChats.some(sc => sc.id === subChatId) ||
-                                                    allSubChats.some(sc => sc.id === subChatId)
-                          if (!chat || !belongsToWorkspace) return null
-                          return (
-                            <div
-                              key={subChatId}
-                              className="absolute inset-0 flex flex-col"
-                              style={{
-                                opacity: 0,
-                                pointerEvents: "none",
-                                contain: "layout style paint",
-                              }}
-                              aria-hidden
-                            >
-                              <ChatViewInner
-                                chat={chat}
-                                subChatId={subChatId}
-                                parentChatId={chatId}
-                                provider={inferProviderFromMessages(subChatId)}
-                                isFirstSubChat={isFirstSubChat}
-                                onAutoRename={handleAutoRename}
-                                onCreateNewSubChat={handleCreateNewSubChat}
-                                onProviderChange={handleProviderChange}
-                                teamId={selectedTeamId || undefined}
-                                repository={repository}
-                                streamId={agentChatStore.getStreamId(subChatId)}
-                                isMobile={isMobileFullscreen}
-                                isSubChatsSidebarOpen={subChatsSidebarMode === "sidebar"}
-                                sandboxId={sandboxId || undefined}
-                                projectPath={worktreePath || undefined}
-                                isArchived={isArchived}
-                                onRestoreWorkspace={handleRestoreWorkspace}
-                                existingPrUrl={agentChat?.prUrl}
-                                isActive={false}
-                                isSplitPane={false}
-                                workspaceName={agentChat?.name ?? null}
-                                workspaceBranch={agentChat?.branch ?? null}
-                                workspaceRepoName={(agentChat as any)?.project?.gitRepo || (agentChat as any)?.project?.name || null}
-                              />
-                            </div>
-                          )
-                        })}
-                    </>
-                  }
-                />
-              ) : (
-                <SplitDropZone>
-                {tabsToRender.map(subChatId => {
-                const chat = getOrCreateChat(subChatId)
-                const isActive = subChatId === activeSubChatId
-                const isFirstSubChat = getFirstSubChatId(agentSubChats) === subChatId
-
-                // Defense in depth: double-check workspace ownership
-                // Use agentSubChats (server data) as primary source, fall back to allSubChats for optimistic updates
-                // This fixes the race condition where allSubChats is empty after setChatId but before setAllSubChats
-                const belongsToWorkspace = agentSubChats.some(sc => sc.id === subChatId) ||
-                                          allSubChats.some(sc => sc.id === subChatId)
-
+              ) : (() => {
+                const chat = getOrCreateChat(activeSubChatId)
+                const isFirstSubChat = getFirstSubChatId(agentSubChats) === activeSubChatId
+                const belongsToWorkspace =
+                  agentSubChats.some((sc) => sc.id === activeSubChatId) ||
+                  allSubChats.some((sc) => sc.id === activeSubChatId)
                 if (!chat || !belongsToWorkspace) return null
-
                 return (
-                  <div
-                    key={subChatId}
-                    className="absolute inset-0 flex flex-col"
-                    style={{
-                      // GPU-accelerated visibility switching (нативное ощущение)
-                      // transform + opacity быстрее чем visibility для GPU
-                      transform: isActive ? "translateZ(0)" : "translateZ(0) scale(0.98)",
-                      opacity: isActive ? 1 : 0,
-                      // Prevent pointer events on hidden tabs
-                      pointerEvents: isActive ? "auto" : "none",
-                      // GPU layer hints
-                      willChange: "transform, opacity",
-                      // Изолируем layout - изменения внутри не влияют на другие табы
-                      contain: "layout style paint",
-                    }}
-                    aria-hidden={!isActive}
-                  >
+                  <div className="absolute inset-0 flex flex-col">
                     <ChatViewInner
                       chat={chat}
-                      subChatId={subChatId}
+                      subChatId={activeSubChatId}
                       parentChatId={chatId}
-                      provider={inferProviderFromMessages(subChatId)}
+                      provider={inferProviderFromMessages(activeSubChatId)}
                       isFirstSubChat={isFirstSubChat}
                       onAutoRename={handleAutoRename}
                       onCreateNewSubChat={handleCreateNewSubChat}
                       onProviderChange={handleProviderChange}
                       teamId={selectedTeamId || undefined}
                       repository={repository}
-                      streamId={agentChatStore.getStreamId(subChatId)}
+                      streamId={agentChatStore.getStreamId(activeSubChatId)}
                       isMobile={isMobileFullscreen}
                       isSubChatsSidebarOpen={subChatsSidebarMode === "sidebar"}
                       sandboxId={sandboxId || undefined}
@@ -7962,7 +7825,7 @@ Make sure to preserve all functionality from both branches when resolving confli
                       isArchived={isArchived}
                       onRestoreWorkspace={handleRestoreWorkspace}
                       existingPrUrl={agentChat?.prUrl}
-                      isActive={isActive}
+                      isActive={true}
                       isSplitPane={false}
                       workspaceName={agentChat?.name ?? null}
                       workspaceBranch={agentChat?.branch ?? null}
@@ -7970,9 +7833,7 @@ Make sure to preserve all functionality from both branches when resolving confli
                     />
                   </div>
                 )
-              })}
-                </SplitDropZone>
-              )}
+              })()}
             </div>
           ) : (
             <>
