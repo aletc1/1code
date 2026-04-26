@@ -11,6 +11,11 @@ import { useTheme } from "next-themes"
 import { dockviewComponents } from "./panel-registry"
 import { dockReadyAtom, widgetPanelMapAtom } from "./atoms"
 import { DockHeaderActions } from "./dock-header-actions"
+import {
+  terminalsAtom,
+  activeTerminalIdAtom,
+} from "../terminal/atoms"
+import { trpc } from "../../lib/trpc"
 
 export interface DockShellProps {
   onApiReady?: (api: DockviewApi) => void
@@ -25,6 +30,9 @@ export function DockShell({ onApiReady, className }: DockShellProps) {
   const [, setApi] = useState<DockviewApi | null>(null)
   const setReady = useSetAtom(dockReadyAtom)
   const setMap = useSetAtom(widgetPanelMapAtom)
+  const setTerminals = useSetAtom(terminalsAtom)
+  const setActiveTerminalIds = useSetAtom(activeTerminalIdAtom)
+  const killTerminal = trpc.terminal.kill.useMutation()
 
   // Without an explicit theme prop, dockview defaults to themeAbyss — its
   // .dockview-theme-abyss class is more specific than my html-level theme
@@ -57,6 +65,36 @@ export function DockShell({ onApiReady, className }: DockShellProps) {
           }
           return changed ? next : m
         })
+
+        // Terminal cleanup — when a `terminal:` panel goes away, drop it
+        // from the per-chat list and SIGKILL the PTY so a closed panel
+        // doesn't leave orphaned shells running. The TerminalPanel reads
+        // `paneId` + `chatId` from its params, which we round-trip through
+        // dockview's params on the panel object.
+        if (panel.id.startsWith("terminal:")) {
+          const params = (panel.params ?? {}) as {
+            paneId?: string
+            chatId?: string
+          }
+          const { paneId, chatId } = params
+          if (paneId && chatId) {
+            killTerminal.mutate({ paneId })
+            setTerminals((prev) => {
+              const list = prev[chatId] ?? []
+              const next = list.filter((t) => t.paneId !== paneId)
+              if (next.length === list.length) return prev
+              return { ...prev, [chatId]: next }
+            })
+            setActiveTerminalIds((prev) => {
+              const list = prev[chatId]
+              if (!list) return prev
+              // If the closed terminal was active, leave selection to the
+              // panel which becomes active next (TerminalPanel.onDidActiveChange
+              // handles it). Otherwise leave as-is.
+              return prev
+            })
+          }
+        }
       })
 
       // We don't expose a teardown here because dockview itself owns the lifecycle.

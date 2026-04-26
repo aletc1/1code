@@ -1,14 +1,25 @@
 import { useCallback } from "react"
-import { useAtomValue } from "jotai"
+import { useAtomValue, useSetAtom } from "jotai"
 import {
   selectedAgentChatIdAtom,
   currentPlanPathAtomFamily,
 } from "../agents/atoms"
 import { useAgentSubChatStore } from "../agents/stores/sub-chat-store"
+import {
+  terminalsAtom,
+  activeTerminalIdAtom,
+} from "../terminal/atoms"
+import {
+  buildTerminalPaneId,
+  generateTerminalId,
+  getNextTerminalName,
+  getTerminalScopeKey,
+} from "../terminal/utils"
 import { trpc } from "../../lib/trpc"
 import { useDockApi } from "./dock-context"
 import { addOrFocus } from "./add-or-focus"
 import { layoutStorageKey } from "./persistence"
+import type { TerminalInstance } from "../terminal/types"
 
 export interface PanelActions {
   available: boolean
@@ -50,6 +61,11 @@ export function usePanelActions(): PanelActions {
   )
   const worktreePath = chat?.worktreePath ?? null
   const projectId = chat?.projectId ?? null
+  const branch = chat?.branch ?? null
+
+  const setTerminals = useSetAtom(terminalsAtom)
+  const setActiveTerminalIds = useSetAtom(activeTerminalIdAtom)
+  const allTerminals = useAtomValue(terminalsAtom)
 
   const focusChat = useCallback(() => {
     if (!dockApi) return
@@ -59,11 +75,30 @@ export function usePanelActions(): PanelActions {
 
   const openTerminal = useCallback(() => {
     if (!dockApi || !chatId || !worktreePath) return
+    const scopeKey = getTerminalScopeKey({ id: chatId, branch, worktreePath })
+    const list = allTerminals[chatId] ?? []
+    const id = generateTerminalId()
+    const paneId = buildTerminalPaneId(scopeKey, id)
+    const name = getNextTerminalName(list)
+    const inst: TerminalInstance = { id, paneId, name, createdAt: Date.now() }
+    setTerminals((prev) => ({
+      ...prev,
+      [chatId]: [...(prev[chatId] ?? []), inst],
+    }))
+    setActiveTerminalIds((prev) => ({ ...prev, [chatId]: id }))
     addOrFocus(dockApi, {
       kind: "terminal",
-      data: { chatId, cwd: worktreePath, workspaceId: chatId },
+      data: { paneId, name, chatId, cwd: worktreePath, workspaceId: chatId },
     })
-  }, [dockApi, chatId, worktreePath])
+  }, [
+    dockApi,
+    chatId,
+    worktreePath,
+    branch,
+    allTerminals,
+    setTerminals,
+    setActiveTerminalIds,
+  ])
 
   const openPlan = useCallback(() => {
     if (!dockApi || !chatId || !planPath) return

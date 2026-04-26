@@ -68,26 +68,51 @@ export const TerminalWidget = memo(function TerminalWidget({
   workspaceId,
   onExpand,
 }: TerminalWidgetProps) {
-  // Widget ↔ panel mutex: when promoted to a dockview panel, hide the summary
-  // and render a small "return to summary" stub instead. The PTY sessions are
-  // preserved across the move via terminal.tsx's serialize/detach lifecycle.
+  // Terminal state - reuse existing atoms
+  const [allTerminals, setAllTerminals] = useAtom(terminalsAtom)
+  const [allActiveIds, setAllActiveIds] = useAtom(activeTerminalIdAtom)
+  const terminalCwds = useAtomValue(terminalCwdAtom)
+
+  // Resolve the active terminal's identity up-front so the widget mutex can
+  // bind to its `paneId` (each terminal is now its own dockview panel — see
+  // [terminal-panel.tsx]). When no terminal exists yet the mutex no-ops; the
+  // useEffect below auto-creates one on mount.
+  const terminalsForChat = useMemo(
+    () => allTerminals[chatId] || [],
+    [allTerminals, chatId],
+  )
+  const activeIdForChat = useMemo(
+    () => allActiveIds[chatId] || null,
+    [allActiveIds, chatId],
+  )
+  const activeTerminalEntity = useMemo(() => {
+    const t = terminalsForChat.find((x) => x.id === activeIdForChat)
+    return t ? { paneId: t.paneId, name: t.name } : null
+  }, [terminalsForChat, activeIdForChat])
+
+  // Widget ↔ panel mutex keyed on the *active* terminal's paneId. When the
+  // active terminal is promoted to a dockview tab, the widget summary
+  // collapses to a "Bring back to summary" stub. PTYs are preserved by the
+  // serialize/detach lifecycle in [terminal.tsx].
   const widgetPanel = useWidgetPanel("terminal", {
     kind: "terminal",
-    data: { chatId, cwd, workspaceId },
+    data: {
+      paneId: activeTerminalEntity?.paneId ?? "__none__",
+      name: activeTerminalEntity?.name ?? "Terminal",
+      chatId,
+      cwd,
+      workspaceId,
+    },
   })
 
   const handleExpand = useCallback(() => {
+    if (!activeTerminalEntity) return
     if (widgetPanel.available) {
       widgetPanel.openAsPanel()
     } else {
       onExpand?.()
     }
-  }, [widgetPanel, onExpand])
-
-  // Terminal state - reuse existing atoms
-  const [allTerminals, setAllTerminals] = useAtom(terminalsAtom)
-  const [allActiveIds, setAllActiveIds] = useAtom(activeTerminalIdAtom)
-  const terminalCwds = useAtomValue(terminalCwdAtom)
+  }, [activeTerminalEntity, widgetPanel, onExpand])
 
   // Theme detection for terminal background
   const { resolvedTheme } = useTheme()
@@ -107,17 +132,10 @@ export const TerminalWidget = memo(function TerminalWidget({
     return getDefaultTerminalBg(isDark)
   }, [isDark, fullThemeData])
 
-  // Get terminals for this chat
-  const terminals = useMemo(
-    () => allTerminals[chatId] || [],
-    [allTerminals, chatId],
-  )
-
-  const activeTerminalId = useMemo(
-    () => allActiveIds[chatId] || null,
-    [allActiveIds, chatId],
-  )
-
+  // Aliases — declared earlier as terminalsForChat / activeIdForChat for
+  // mutex setup; reuse them under the names the rest of this component uses.
+  const terminals = terminalsForChat
+  const activeTerminalId = activeIdForChat
   const activeTerminal = useMemo(
     () => terminals.find((t) => t.id === activeTerminalId) || null,
     [terminals, activeTerminalId],

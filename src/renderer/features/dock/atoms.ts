@@ -21,10 +21,16 @@ export interface NewChatPanelEntity {
   projectId: string
 }
 export interface TerminalPanelEntity {
-  /** Chat workspace this terminal panel belongs to. The panel hosts multiple
-   *  terminal sessions internally (TerminalSection's tab strip). */
+  /** Stable PTY identifier — matches the `paneId` registered in the
+   *  terminalsAtom store for this terminal. The backend keeps the PTY
+   *  alive across mount/unmount cycles keyed by this id. */
+  paneId: string
+  /** Display name shown as the dockview tab title (e.g. "Terminal 1"). */
+  name: string
+  /** Chat workspace this terminal belongs to — used for cleanup on close
+   *  and to look up the per-chat terminal list. */
   chatId: string
-  /** Working directory for new terminals. */
+  /** Working directory for the PTY. */
   cwd: string
   /** Persistence scope id (usually the same as chatId for local chats). */
   workspaceId: string
@@ -67,7 +73,7 @@ export function panelIdFor(entity: PanelEntity): string {
     case "chat-new":
       return `chat-new:${entity.data.draftId ?? "singleton"}`
     case "terminal":
-      return `terminal:${entity.data.chatId}`
+      return `terminal:${entity.data.paneId}`
     case "file":
       return `file:${entity.data.absolutePath}`
     case "plan":
@@ -88,7 +94,7 @@ export function panelTitleFor(entity: PanelEntity): string {
     case "chat-new":
       return "New chat"
     case "terminal":
-      return "Terminal"
+      return entity.data.name || "Terminal"
     case "file": {
       const segs = entity.data.absolutePath.split("/")
       return segs[segs.length - 1] || entity.data.absolutePath
