@@ -19,6 +19,8 @@ export {
 export { addOrFocus, type AddOrFocusOptions } from "./add-or-focus"
 export { PANEL_COMPONENTS, dockviewComponents } from "./panel-registry"
 export { useWidgetPanel, type WidgetPanelHandle } from "./use-widget-panel"
+export { usePanelActions, type PanelActions } from "./use-panel-actions"
+export { DockHeaderActions } from "./dock-header-actions"
 export {
   loadLayoutSnapshot,
   saveLayoutSnapshot,

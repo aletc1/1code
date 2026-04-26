@@ -3,6 +3,7 @@ import { useCallback, useState } from "react"
 import { useSetAtom } from "jotai"
 import { dockviewComponents } from "./panel-registry"
 import { dockReadyAtom, widgetPanelMapAtom } from "./atoms"
+import { DockHeaderActions } from "./dock-header-actions"
 
 export interface DockShellProps {
   onApiReady?: (api: DockviewApi) => void
@@ -52,6 +53,8 @@ export function DockShell({ onApiReady, className }: DockShellProps) {
       className={className}
       components={dockviewComponents}
       onReady={handleReady}
+      rightHeaderActionsComponent={DockHeaderActions}
+      singleTabMode="fullwidth"
     />
   )
 }

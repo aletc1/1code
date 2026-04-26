@@ -1,14 +1,19 @@
+import { MessageSquare, Terminal as TerminalIcon } from "lucide-react"
 import { isMacOS, isWindows as isWindowsPlatform } from "../../lib/utils/platform"
 import { WindowsTitleBar } from "../../components/windows-title-bar"
-import { PlusMenu } from "./plus-menu"
+import { Button } from "../../components/ui/button"
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "../../components/ui/tooltip"
+import { usePanelActions } from "../dock"
 
 /**
  * Unified top bar — owns the window drag region and (on macOS) reserves the
- * 78px traffic-light gutter. Replaces the absolute-positioned 32px strip that
- * lived inside the content area, plus the platform-conditional WindowsTitleBar.
- *
- * Future steps mount the workspace selector, [+] menu, quick-launch buttons,
- * and Details toggle inside the no-drag region in the middle.
+ * 78px traffic-light gutter. Hosts the high-frequency quick-launch buttons
+ * (Chat, Terminal). The "rest" of the panel-launch menu lives inside the
+ * dockview's right header actions ([+] dropdown), one per group.
  */
 export function TopBar() {
   // Windows still uses its custom titlebar with min/max/close controls.
@@ -25,23 +30,65 @@ export function TopBar() {
       }}
       data-app-top-bar
     >
-      {/* macOS traffic-light gutter (titleBarStyle: hiddenInset). Reserves space
-          for the native window controls on the left. */}
+      {/* macOS traffic-light gutter (titleBarStyle: hiddenInset). */}
       {isMacOS() ? <div className="w-[78px] shrink-0 h-full" /> : null}
 
-      {/* Quick-launch zone — interactive controls live in a no-drag wrapper. */}
+      {/* Quick-launch zone — vertically centered icon buttons. */}
       <div
-        className="flex items-center h-full px-1 gap-0.5"
+        className="flex items-center h-full gap-0.5 px-1"
         style={{
           // @ts-expect-error - WebKit-specific
           WebkitAppRegion: "no-drag",
         }}
       >
-        <PlusMenu />
+        <QuickLaunchChatButton />
+        <QuickLaunchTerminalButton />
       </div>
 
-      {/* The remaining width is drag area. */}
+      {/* Remaining width is drag area. */}
       <div className="flex-1 h-full" />
     </div>
+  )
+}
+
+function QuickLaunchChatButton() {
+  const actions = usePanelActions()
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-7 w-7"
+          aria-label="Show chat"
+          disabled={!actions.canFocusChat}
+          onClick={actions.focusChat}
+        >
+          <MessageSquare className="h-3.5 w-3.5" />
+        </Button>
+      </TooltipTrigger>
+      <TooltipContent side="bottom">Show chat</TooltipContent>
+    </Tooltip>
+  )
+}
+
+function QuickLaunchTerminalButton() {
+  const actions = usePanelActions()
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-7 w-7"
+          aria-label="New terminal"
+          disabled={!actions.canOpenTerminal}
+          onClick={actions.openTerminal}
+        >
+          <TerminalIcon className="h-3.5 w-3.5" />
+        </Button>
+      </TooltipTrigger>
+      <TooltipContent side="bottom">New terminal</TooltipContent>
+    </Tooltip>
   )
 }

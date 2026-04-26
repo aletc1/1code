@@ -1,9 +1,8 @@
 "use client"
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { useCallback, useEffect, useMemo } from "react"
 import { useAtom, useAtomValue, useSetAtom } from "jotai"
-import { ArrowUpRight, TerminalSquare, Box, ListTodo, GitPullRequest, Activity, Info, Folder, Search, PlayCircle } from "lucide-react"
-import { ResizableSidebar } from "@/components/ui/resizable-sidebar"
+import { ArrowUpRight, TerminalSquare, Box, ListTodo, GitPullRequest, Activity, PlayCircle } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import {
   Tooltip,
@@ -15,22 +14,16 @@ import {
   PlanIcon,
   DiffIcon,
   OriginalMCPIcon,
-  SearchIcon,
-  ExpandIcon,
-  CollapseIcon,
 } from "@/components/ui/icons"
 import { Kbd } from "@/components/ui/kbd"
 import { cn } from "@/lib/utils"
 import { useResolvedHotkeyDisplay } from "@/lib/hotkeys"
 import {
   detailsSidebarOpenAtom,
-  detailsSidebarWidthAtom,
-  detailsSidebarTabAtom,
   widgetVisibilityAtomFamily,
   widgetOrderAtomFamily,
   WIDGET_REGISTRY,
   type WidgetId,
-  type DetailsSidebarTab,
 } from "./atoms"
 import { WidgetSettingsPopup } from "./widget-settings-popup"
 import { InfoSection } from "./sections/info-section"
@@ -44,10 +37,8 @@ import { PrWidget } from "./sections/pr-widget"
 import { ScriptsWidget } from "./sections/scripts-widget"
 import { getTerminalScopeKey } from "../terminal/utils"
 import { trpc } from "../../lib/trpc"
-import { FilesTab, type FilesTabHandle } from "./sections/files-tab"
-import { SearchTab } from "./sections/search-tab"
 import type { ParsedDiffFile } from "./types"
-import { fileViewerOpenAtomFamily, type AgentMode } from "../agents/atoms"
+import { type AgentMode } from "../agents/atoms"
 import {
   agentsSettingsDialogOpenAtom,
   agentsSettingsDialogActiveTabAtom,
@@ -243,19 +234,8 @@ export function DetailsSidebar({
   remoteInfo,
   isRemoteChat = false,
 }: DetailsSidebarProps) {
-  // Global sidebar open state
+  // Global sidebar open state — gridview right cell visibility tracks this.
   const [isOpen, setIsOpen] = useAtom(detailsSidebarOpenAtom)
-
-  // Active tab state (Details / Files)
-  const [activeTab, setActiveTab] = useAtom(detailsSidebarTabAtom)
-
-  // Files tab ref for header actions
-  const filesTabRef = useRef<FilesTabHandle>(null)
-  const [filesAllExpanded, setFilesAllExpanded] = useState(false)
-
-  // Current file open in file viewer (for tree highlight sync)
-  const fileViewerAtom = useMemo(() => fileViewerOpenAtomFamily(chatId), [chatId])
-  const fileViewerPath = useAtomValue(fileViewerAtom)
 
   // Settings dialog atoms for MCP settings
   const setSettingsOpen = useSetAtom(agentsSettingsDialogOpenAtom)
@@ -319,7 +299,6 @@ export function DetailsSidebar({
 
   // Resolved hotkeys for tooltips
   const toggleDetailsHotkey = useResolvedHotkeyDisplay("toggle-details")
-  const fileSearchHotkey = useResolvedHotkeyDisplay("file-search")
 
   // Check if a widget should be shown
   const isWidgetVisible = useCallback(
@@ -347,148 +326,41 @@ export function DetailsSidebar({
     return () => window.removeEventListener("keydown", handleKeyDown, true)
   }, [setIsOpen, isOpen])
 
-  // Stable noop callback for when onOpenFile is not provided
-  const noopSelectFile = useCallback(() => {}, [])
-
   return (
-    <ResizableSidebar
-      isOpen={isOpen}
-      onClose={closeSidebar}
-      widthAtom={detailsSidebarWidthAtom}
-      side="right"
-      minWidth={250}
-      maxWidth={700}
-      animationDuration={0}
-      initialWidth={0}
-      exitWidth={0}
-      showResizeTooltip={true}
-      className="bg-tl-background border-l"
-      style={{ borderLeftWidth: "0.5px", overflow: "hidden" }}
-    >
-      <div className="flex flex-col h-full min-w-0 overflow-hidden">
-        {/* Header with pill tabs */}
-        <div
-          className="flex items-center justify-between px-2 h-10 bg-tl-background flex-shrink-0 border-b border-border/50"
-          style={{
-            // @ts-expect-error - WebKit-specific property
-            WebkitAppRegion: "no-drag",
-          }}
-        >
-          <div className="flex items-center gap-2">
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  onClick={closeSidebar}
-                  className="h-6 w-6 p-0 hover:bg-foreground/10 transition-[background-color,transform] duration-150 ease-out active:scale-[0.97] text-foreground flex-shrink-0 rounded-md"
-                  aria-label="Close details"
-                >
-                  <IconDoubleChevronRight className="h-4 w-4" />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent side="bottom">
-                Close details
-                {toggleDetailsHotkey && <Kbd>{toggleDetailsHotkey}</Kbd>}
-              </TooltipContent>
-            </Tooltip>
+    <div className="flex flex-col h-full min-w-0 overflow-hidden bg-background">
+      {/* Header — close button + Edit Widgets popup. The Files / Search tabs
+          previously here are now first-class dockview panels (see [+] menu in
+          the dock header). */}
+      <div
+        className="flex items-center justify-between px-2 h-10 flex-shrink-0 border-b border-border/50"
+        style={{
+          // @ts-expect-error - WebKit-specific property
+          WebkitAppRegion: "no-drag",
+        }}
+      >
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={closeSidebar}
+              className="h-6 w-6 p-0 hover:bg-foreground/10 text-foreground flex-shrink-0 rounded-md"
+              aria-label="Close details"
+            >
+              <IconDoubleChevronRight className="h-4 w-4" />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent side="bottom">
+            Close details
+            {toggleDetailsHotkey && <Kbd>{toggleDetailsHotkey}</Kbd>}
+          </TooltipContent>
+        </Tooltip>
 
-            {/* Pill tabs */}
-            <div className="flex items-center gap-0.5 p-0.5 rounded-lg bg-muted/50">
-              <button
-                type="button"
-                onClick={() => setActiveTab("details")}
-                className={cn(
-                  "px-2.5 py-1 text-xs font-medium rounded-md transition-colors",
-                  activeTab === "details"
-                    ? "bg-background text-foreground shadow-sm"
-                    : "text-muted-foreground hover:text-foreground",
-                )}
-              >
-                <span className="flex items-center gap-1.5">
-                  <Info className="size-3.5" />
-                  Details
-                </span>
-              </button>
-              <button
-                type="button"
-                onClick={() => setActiveTab("files")}
-                className={cn(
-                  "px-2.5 py-1 text-xs font-medium rounded-md transition-colors",
-                  activeTab === "files"
-                    ? "bg-background text-foreground shadow-sm"
-                    : "text-muted-foreground hover:text-foreground",
-                )}
-              >
-                <span className="flex items-center gap-1.5">
-                  <Folder className="size-3.5" />
-                  Files
-                </span>
-              </button>
-              <button
-                type="button"
-                onClick={() => setActiveTab("search")}
-                className={cn(
-                  "px-2.5 py-1 text-xs font-medium rounded-md transition-colors",
-                  activeTab === "search"
-                    ? "bg-background text-foreground shadow-sm"
-                    : "text-muted-foreground hover:text-foreground",
-                )}
-              >
-                <span className="flex items-center gap-1.5">
-                  <Search className="size-3.5" />
-                  Search
-                </span>
-              </button>
-            </div>
-          </div>
+        <WidgetSettingsPopup workspaceId={chatId} isRemoteChat={isRemoteChat} />
+      </div>
 
-          {/* Right-side header actions */}
-          {activeTab === "details" ? (
-            <WidgetSettingsPopup workspaceId={chatId} isRemoteChat={isRemoteChat} />
-          ) : activeTab === "files" ? (
-            <div className="flex items-center gap-0.5">
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    onClick={() => filesTabRef.current?.openSearch()}
-                    className="h-6 w-6 p-0 text-muted-foreground hover:text-foreground"
-                  >
-                    <SearchIcon className="size-3.5" />
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent side="bottom">
-                  Search files
-                  {fileSearchHotkey && <Kbd>{fileSearchHotkey}</Kbd>}
-                </TooltipContent>
-              </Tooltip>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    onClick={() => filesTabRef.current?.toggleExpandCollapse()}
-                    className="h-6 w-6 p-0 text-muted-foreground hover:text-foreground"
-                  >
-                    {filesAllExpanded ? (
-                      <CollapseIcon className="size-3.5" />
-                    ) : (
-                      <ExpandIcon className="size-3.5" />
-                    )}
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent side="bottom">
-                  {filesAllExpanded ? "Collapse all" : "Expand all"}
-                </TooltipContent>
-              </Tooltip>
-            </div>
-          ) : null}
-        </div>
-
-        {/* Tab content — both tabs always mounted to preserve state */}
-        <div className={cn("flex-1 overflow-y-auto py-2", activeTab !== "details" && "hidden")}>
+      {/* Widget list */}
+      <div className="flex-1 overflow-y-auto py-2">
           {widgetOrder.map((widgetId) => {
             // Skip if widget is not visible
             if (!isWidgetVisible(widgetId)) return null
@@ -648,22 +520,7 @@ export function DetailsSidebar({
                 return null
             }
           })}
-        </div>
-        <FilesTab
-          ref={filesTabRef}
-          worktreePath={worktreePath}
-          onSelectFile={onOpenFile ?? noopSelectFile}
-          onExpandedStateChange={setFilesAllExpanded}
-          currentViewerFilePath={fileViewerPath}
-          className={cn("flex-1", activeTab !== "files" && "hidden")}
-        />
-        <SearchTab
-          worktreePath={worktreePath}
-          onSelectFile={onOpenFile ?? noopSelectFile}
-          isActive={activeTab === "search"}
-          className={cn("flex-1", activeTab !== "search" && "hidden")}
-        />
       </div>
-    </ResizableSidebar>
+    </div>
   )
 }
