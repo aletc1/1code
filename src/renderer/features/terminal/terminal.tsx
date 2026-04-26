@@ -387,14 +387,32 @@ export function Terminal({
     return () => window.removeEventListener("keydown", handleKeyDown)
   }, [])
 
-  // Drag and drop files
+  // Drag and drop files. Bail out for non-file drags (e.g. dockview tab
+  // drag, where `types` contains "application/vnd.dockview-panel" or just
+  // "Files" is missing) — otherwise calling preventDefault() here makes
+  // the terminal claim the drop and dockview never sees it, blocking
+  // tab-to-split / tab-reorder when the cursor crosses a terminal pane.
+  const isFileDrag = (event: React.DragEvent): boolean => {
+    const types = event.dataTransfer?.types
+    if (!types) return false
+    // DataTransferItemList exposes `.contains`; the types attribute is
+    // technically a DOMStringList, but in practice all browsers expose an
+    // array-like with includes(). Use a defensive check.
+    for (let i = 0; i < types.length; i++) {
+      if (types[i] === "Files") return true
+    }
+    return false
+  }
+
   const handleDragOver = useCallback((event: React.DragEvent) => {
+    if (!isFileDrag(event)) return
     event.preventDefault()
     event.dataTransfer.dropEffect = "copy"
   }, [])
 
   const handleDrop = useCallback(
     (event: React.DragEvent) => {
+      if (!isFileDrag(event)) return
       event.preventDefault()
 
       const files = Array.from(event.dataTransfer.files)
