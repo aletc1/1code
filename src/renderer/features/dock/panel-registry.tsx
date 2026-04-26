@@ -4,6 +4,9 @@ import { MainPanel } from "./panels/main-panel"
 import { PlanPanel } from "./panels/plan-panel"
 import { DiffPanel } from "./panels/diff-panel"
 import { TerminalPanel } from "./panels/terminal-panel"
+import { FilePanel } from "./panels/file-panel"
+import { SearchPanel } from "./panels/search-panel"
+import { FilesTreePanel } from "./panels/files-tree-panel"
 import type { PanelKind } from "./atoms"
 
 export type PanelComponent = React.FunctionComponent<IDockviewPanelProps>
@@ -12,11 +15,11 @@ export const PANEL_COMPONENTS: Record<PanelKind, PanelComponent> = {
   chat: PlaceholderPanel,
   "chat-new": PlaceholderPanel,
   terminal: TerminalPanel,
-  file: PlaceholderPanel,
+  file: FilePanel,
   plan: PlanPanel,
   diff: DiffPanel,
-  search: PlaceholderPanel,
-  "files-tree": PlaceholderPanel,
+  search: SearchPanel,
+  "files-tree": FilesTreePanel,
 }
 
 // Dockview consumes a Record<string, FunctionComponent>. We add the "main"

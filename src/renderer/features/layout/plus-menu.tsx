@@ -1,6 +1,6 @@
 import { useCallback } from "react"
 import { useAtomValue } from "jotai"
-import { Plus, FileText, FileDiff, Terminal as TerminalIcon, RotateCcw } from "lucide-react"
+import { Plus, FileText, FileDiff, Terminal as TerminalIcon, RotateCcw, Search, FolderTree } from "lucide-react"
 import { Button } from "../../components/ui/button"
 import {
   DropdownMenu,
@@ -43,9 +43,12 @@ export function PlusMenu() {
   )
   const worktreePath = chat?.worktreePath ?? null
 
+  const projectId = chat?.projectId ?? null
   const canOpenPlan = !!chatId && !!planPath && !!dockApi
   const canOpenDiff = !!chatId && !!dockApi
   const canOpenTerminal = !!chatId && !!worktreePath && !!dockApi
+  const canOpenSearch = !!projectId && !!dockApi
+  const canOpenFilesTree = !!projectId && !!dockApi
 
   const openPlan = useCallback(() => {
     if (!dockApi || !chatId || !planPath) return
@@ -68,6 +71,16 @@ export function PlusMenu() {
       data: { chatId, cwd: worktreePath, workspaceId: chatId },
     })
   }, [dockApi, chatId, worktreePath])
+
+  const openSearch = useCallback(() => {
+    if (!dockApi || !projectId) return
+    addOrFocus(dockApi, { kind: "search", data: { projectId } })
+  }, [dockApi, projectId])
+
+  const openFilesTree = useCallback(() => {
+    if (!dockApi || !projectId) return
+    addOrFocus(dockApi, { kind: "files-tree", data: { projectId } })
+  }, [dockApi, projectId])
 
   const resetLayout = useCallback(() => {
     try {
@@ -101,6 +114,19 @@ export function PlusMenu() {
         <TooltipContent side="bottom">Open a panel</TooltipContent>
       </Tooltip>
       <DropdownMenuContent align="start" className="w-56">
+        <DropdownMenuItem disabled={!canOpenTerminal} onClick={openTerminal}>
+          <TerminalIcon className="h-4 w-4 mr-2" />
+          New Terminal
+        </DropdownMenuItem>
+        <DropdownMenuItem disabled={!canOpenFilesTree} onClick={openFilesTree}>
+          <FolderTree className="h-4 w-4 mr-2" />
+          Files Tree
+        </DropdownMenuItem>
+        <DropdownMenuItem disabled={!canOpenSearch} onClick={openSearch}>
+          <Search className="h-4 w-4 mr-2" />
+          Search
+        </DropdownMenuItem>
+        <DropdownMenuSeparator />
         <DropdownMenuItem disabled={!canOpenPlan} onClick={openPlan}>
           <FileText className="h-4 w-4 mr-2" />
           Show Plan
@@ -108,10 +134,6 @@ export function PlusMenu() {
         <DropdownMenuItem disabled={!canOpenDiff} onClick={openDiff}>
           <FileDiff className="h-4 w-4 mr-2" />
           Show Changes
-        </DropdownMenuItem>
-        <DropdownMenuItem disabled={!canOpenTerminal} onClick={openTerminal}>
-          <TerminalIcon className="h-4 w-4 mr-2" />
-          Show Terminal
         </DropdownMenuItem>
         <DropdownMenuSeparator />
         <DropdownMenuItem onClick={resetLayout}>
