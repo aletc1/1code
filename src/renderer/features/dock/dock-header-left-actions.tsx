@@ -15,13 +15,18 @@ import {
 } from "../../lib/atoms"
 
 /**
- * Group-header actions on the *left* side of the dockview tab strip — mirrors
- * DockHeaderActions (right side). Today this owns the "open chats sidebar"
- * toggle that used to live as `AgentsHeaderControls` inside the chat content;
- * sitting it at the dock bar puts every chrome control on one row.
+ * Group-header actions at the *prefix* (left edge, before the tabs) of the
+ * dockview tab strip. Wired via DockviewReact's
+ * `prefixHeaderActionsComponent` so the button sits before the first tab,
+ * not after the last one (`leftHeaderActionsComponent` is "left of the
+ * void / right cluster", which still appears after tabs).
  *
- * Only renders when the left rail is closed (otherwise the rail's own header
- * provides the toggle, and a duplicate would be confusing).
+ * Today owns the "open chats sidebar" toggle that used to live as
+ * `AgentsHeaderControls` inside the chat content; placing it on the dock bar
+ * puts every chrome control on one row.
+ *
+ * Only renders when the left rail is closed (otherwise the rail's own
+ * header provides the toggle, and a duplicate would be confusing).
  */
 export function DockHeaderLeftActions(_props: IDockviewHeaderActionsProps) {
   const [sidebarOpen, setSidebarOpen] = useAtom(agentsSidebarOpenAtom)

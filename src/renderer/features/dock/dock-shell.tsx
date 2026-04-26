@@ -125,7 +125,7 @@ export function DockShell({ onApiReady, className }: DockShellProps) {
       components={dockviewComponents}
       defaultTabComponent={RenamableTab}
       onReady={handleReady}
-      leftHeaderActionsComponent={DockHeaderLeftActions}
+      prefixHeaderActionsComponent={DockHeaderLeftActions}
       rightHeaderActionsComponent={DockHeaderActions}
       theme={dockviewTheme}
     />
