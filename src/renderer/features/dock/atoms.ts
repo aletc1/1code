@@ -1,0 +1,119 @@
+import { atom } from "jotai"
+import { atomWithWindowStorage } from "../../lib/window-storage"
+import type { WidgetId } from "../details-sidebar/atoms"
+
+export type PanelKind =
+  | "chat"
+  | "chat-new"
+  | "terminal"
+  | "file"
+  | "plan"
+  | "diff"
+  | "search"
+  | "files-tree"
+
+export interface ChatPanelEntity {
+  subChatId: string
+  chatId: string
+}
+export interface NewChatPanelEntity {
+  draftId?: string
+  projectId: string
+}
+export interface TerminalPanelEntity {
+  paneId: string
+  name?: string
+  scopeKey: string
+}
+export interface FilePanelEntity {
+  absolutePath: string
+  initialLine?: number
+  initialColumn?: number
+}
+export interface PlanPanelEntity {
+  chatId: string
+  planPath: string
+}
+export interface DiffPanelEntity {
+  chatId: string
+  subChatId?: string
+}
+export interface SearchPanelEntity {
+  projectId: string
+  initialQuery?: string
+}
+export interface FilesTreePanelEntity {
+  projectId: string
+}
+
+export type PanelEntity =
+  | { kind: "chat"; data: ChatPanelEntity }
+  | { kind: "chat-new"; data: NewChatPanelEntity }
+  | { kind: "terminal"; data: TerminalPanelEntity }
+  | { kind: "file"; data: FilePanelEntity }
+  | { kind: "plan"; data: PlanPanelEntity }
+  | { kind: "diff"; data: DiffPanelEntity }
+  | { kind: "search"; data: SearchPanelEntity }
+  | { kind: "files-tree"; data: FilesTreePanelEntity }
+
+export function panelIdFor(entity: PanelEntity): string {
+  switch (entity.kind) {
+    case "chat":
+      return `chat:${entity.data.subChatId}`
+    case "chat-new":
+      return `chat-new:${entity.data.draftId ?? "singleton"}`
+    case "terminal":
+      return `terminal:${entity.data.paneId}`
+    case "file":
+      return `file:${entity.data.absolutePath}`
+    case "plan":
+      return `plan:${entity.data.chatId}:${entity.data.planPath}`
+    case "diff":
+      return `diff:${entity.data.chatId}`
+    case "search":
+      return `search:${entity.data.projectId}`
+    case "files-tree":
+      return `files-tree:${entity.data.projectId}`
+  }
+}
+
+export function panelTitleFor(entity: PanelEntity): string {
+  switch (entity.kind) {
+    case "chat":
+      return "Chat"
+    case "chat-new":
+      return "New chat"
+    case "terminal":
+      return entity.data.name ?? "Terminal"
+    case "file": {
+      const segs = entity.data.absolutePath.split("/")
+      return segs[segs.length - 1] || entity.data.absolutePath
+    }
+    case "plan":
+      return "Plan"
+    case "diff":
+      return "Changes"
+    case "search":
+      return "Search"
+    case "files-tree":
+      return "Files"
+  }
+}
+
+export function widgetMutexKey(widgetId: WidgetId, entityKey: string): string {
+  return `${widgetId}:${entityKey}`
+}
+
+export const widgetPanelMapAtom = atomWithWindowStorage<Record<string, string | null>>(
+  "dock:widgetPanelMap",
+  {},
+  { getOnInit: true },
+)
+
+export const pinnedPanelIdsAtom = atomWithWindowStorage<string[]>(
+  "dock:pinnedPanelIds",
+  [],
+  { getOnInit: true },
+)
+
+export const dockReadyAtom = atom<boolean>(false)
