@@ -4931,6 +4931,7 @@ export function ChatView({
   onOpenDiff,
   onOpenTerminal,
   hideHeader = false,
+  subChatIdOverride,
 }: {
   chatId: string
   isSidebarOpen: boolean
@@ -4943,11 +4944,19 @@ export function ChatView({
   onOpenDiff?: () => void
   onOpenTerminal?: () => void
   hideHeader?: boolean
+  /** When set, this ChatView renders THIS specific sub-chat instead of
+   *  whatever is currently `activeSubChatId` in the store. Used by
+   *  ChatPanel so each dockview tab shows its own sub-chat content. */
+  subChatIdOverride?: string
 }) {
   const [selectedTeamId] = useAtom(selectedTeamIdAtom)
 
-  // Get active sub-chat ID from store for mode tracking (reactive)
-  const activeSubChatIdForMode = useAgentSubChatStore((state) => state.activeSubChatId)
+  // Get active sub-chat ID from store for mode tracking (reactive). When the
+  // ChatView is mounted inside a specific dockview tab (ChatPanel),
+  // `subChatIdOverride` pins the rendered sub-chat to this tab's id so each
+  // visible panel shows its own conversation regardless of global focus.
+  const activeSubChatIdFromStoreForMode = useAgentSubChatStore((state) => state.activeSubChatId)
+  const activeSubChatIdForMode = subChatIdOverride ?? activeSubChatIdFromStoreForMode
   // Use per-subChat mode atom - falls back to "agent" if no active sub-chat
   const subChatModeAtom = useMemo(
     () => subChatModeAtomFamily(activeSubChatIdForMode || ""),
@@ -4991,8 +5000,10 @@ export function ChatView({
     [chatId],
   )
   const [isDiffSidebarOpen, setIsDiffSidebarOpen] = useAtom(diffSidebarAtom)
-  // Subscribe to activeSubChatId for plan sidebar (needs to update when switching sub-chats)
-  const activeSubChatIdForPlan = useAgentSubChatStore((state) => state.activeSubChatId)
+  // Subscribe to activeSubChatId for plan sidebar (needs to update when switching sub-chats).
+  // Same override as above — pinned by ChatPanel when this ChatView is per-tab.
+  const activeSubChatIdFromStoreForPlan = useAgentSubChatStore((state) => state.activeSubChatId)
+  const activeSubChatIdForPlan = subChatIdOverride ?? activeSubChatIdFromStoreForPlan
 
   // Per-subChat plan sidebar state - each sub-chat remembers its own open/close state
   const planSidebarAtom = useMemo(
@@ -5378,7 +5389,7 @@ export function ChatView({
 
   // Get sub-chat state from store (reactive subscription for tabsToRender)
   const {
-    activeSubChatId,
+    activeSubChatId: activeSubChatIdFromStore,
     openSubChatIds,
     pinnedSubChatIds,
     allSubChats,
@@ -5392,6 +5403,11 @@ export function ChatView({
       splitPaneIds: state.splitPaneIds,
     }))
   )
+  // Override the rendered active sub-chat when ChatView is mounted inside a
+  // per-tab ChatPanel — see [chat-panel.tsx]. The store value still drives
+  // the right-rail widgets / hotkeys (which want the globally-focused chat),
+  // but the body of THIS ChatView renders the sub-chat its tab represents.
+  const activeSubChatId = subChatIdOverride ?? activeSubChatIdFromStore
   const [subChatProviderOverrides, setSubChatProviderOverrides] = useAtom(
     subChatProviderOverridesAtom,
   )

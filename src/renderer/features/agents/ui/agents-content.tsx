@@ -104,7 +104,15 @@ function DraggedSubChatPreview({ id }: { id: string }) {
 }
 
 // Main Component
-export function AgentsContent() {
+export function AgentsContent({
+  subChatIdOverride,
+}: {
+  /** When provided, the ChatView mounted below renders this specific
+   *  sub-chat regardless of the store's `activeSubChatId`. ChatPanel
+   *  passes its own `params.subChatId` so each dockview tab shows its
+   *  own conversation. */
+  subChatIdOverride?: string
+} = {}) {
   const [selectedChatId, setSelectedChatId] = useAtom(selectedAgentChatIdAtom)
   const desktopView = useAtomValue(desktopViewAtom)
   const setSelectedChatIsRemote = useSetAtom(selectedChatIsRemoteAtom)
@@ -1090,12 +1098,13 @@ export function AgentsContent() {
           ) : selectedChatId ? (
             <div className="h-full flex flex-col relative overflow-hidden">
               <ChatView
-                key={`${chatSourceMode}-${selectedChatId}`}
+                key={`${chatSourceMode}-${selectedChatId}-${subChatIdOverride ?? "active"}`}
                 chatId={selectedChatId}
                 isSidebarOpen={sidebarOpen}
                 onToggleSidebar={() => setSidebarOpen((prev) => !prev)}
                 selectedTeamName={selectedTeam?.name}
                 selectedTeamImageUrl={selectedTeam?.image_url}
+                subChatIdOverride={subChatIdOverride}
               />
             </div>
           ) : selectedDraftId || showNewChatForm ? (

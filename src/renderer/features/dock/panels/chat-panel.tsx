@@ -90,7 +90,7 @@ export function ChatPanel({
         contain: "layout style paint",
       }}
     >
-      {isVisible ? <AgentsContent /> : null}
+      {isVisible ? <AgentsContent subChatIdOverride={params.subChatId} /> : null}
     </div>
   )
 }
