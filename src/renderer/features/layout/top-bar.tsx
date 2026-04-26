@@ -1,5 +1,6 @@
 import { isMacOS, isWindows as isWindowsPlatform } from "../../lib/utils/platform"
 import { WindowsTitleBar } from "../../components/windows-title-bar"
+import { PlusMenu } from "./plus-menu"
 
 /**
  * Unified top bar — owns the window drag region and (on macOS) reserves the
@@ -28,8 +29,18 @@ export function TopBar() {
           for the native window controls on the left. */}
       {isMacOS() ? <div className="w-[78px] shrink-0 h-full" /> : null}
 
-      {/* The middle stretches as drag area. Step 9 puts the [+] menu and
-          quick-launch buttons here inside a `WebkitAppRegion: no-drag` wrapper. */}
+      {/* Quick-launch zone — interactive controls live in a no-drag wrapper. */}
+      <div
+        className="flex items-center h-full px-1 gap-0.5"
+        style={{
+          // @ts-expect-error - WebKit-specific
+          WebkitAppRegion: "no-drag",
+        }}
+      >
+        <PlusMenu />
+      </div>
+
+      {/* The remaining width is drag area. */}
       <div className="flex-1 h-full" />
     </div>
   )
