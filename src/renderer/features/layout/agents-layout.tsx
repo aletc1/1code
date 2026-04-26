@@ -39,7 +39,15 @@ import { AgentsSidebar } from "../sidebar/agents-sidebar"
 import { UpdateBanner } from "../../components/update-banner"
 import { TopBar } from "./top-bar"
 import { SettingsSidebar } from "../settings/settings-sidebar"
-import { DockShell, DockProvider, type DockHandles } from "../dock"
+import {
+  DockShell,
+  DockProvider,
+  loadLayoutSnapshot,
+  makeDebouncedSaver,
+  tryRestore,
+  type DockHandles,
+  type AgentsLayoutSnapshot,
+} from "../dock"
 import type { DockviewApi } from "dockview-react"
 import { useUpdateChecker } from "../../lib/hooks/use-update-checker"
 import { useAgentSubChatStore } from "../agents/stores/sub-chat-store"
@@ -68,6 +76,11 @@ interface ShellContextValue {
   onSignOut: () => Promise<void>
   onToggleSidebar: () => void
   setDockApi: (api: DockviewApi) => void
+  /** Layout snapshot loaded once at mount. Panels read this on dockview-ready
+   *  to restore previous arrangement before falling back to defaults. */
+  layoutSnapshot: AgentsLayoutSnapshot | null
+  /** Schedule a debounced save of the current layout. */
+  scheduleLayoutSave: () => void
 }
 
 const ShellContext = createContext<ShellContextValue | null>(null)
@@ -116,24 +129,37 @@ function LeftRailPanel(_props: IGridviewPanelProps) {
 }
 
 function CenterRailPanel(_props: IGridviewPanelProps) {
-  const setDockApi = useShellContext().setDockApi
+  const { setDockApi, layoutSnapshot, scheduleLayoutSave } = useShellContext()
 
   const handleDockReady = useCallback(
     (api: DockviewApi) => {
       setDockApi(api)
-      // Mount the singleton workspace shell. Step 6 will replace this with
-      // one `chat` panel per sub-chat, but today the existing chat experience
-      // (sub-chat tabs + ChatView + nested DetailsSidebar) lives inside this
-      // single "main" panel.
-      if (!api.getPanel("main")) {
+
+      // Try to restore the prior dock layout. fromJSON throws if it references
+      // unregistered components, so wrap defensively (handled inside tryRestore).
+      const { dock: restored } = tryRestore(null, api, layoutSnapshot)
+
+      if (!restored && !api.getPanel("main")) {
+        // First-run / unrestorable: mount the singleton workspace shell.
+        api.addPanel({
+          id: "main",
+          component: "main",
+          title: "Workspace",
+        })
+      } else if (restored && !api.getPanel("main")) {
+        // Restored snapshot but the workspace shell wasn't in it (older
+        // snapshot or the user closed it). Re-add to keep the chat reachable.
         api.addPanel({
           id: "main",
           component: "main",
           title: "Workspace",
         })
       }
+
+      // Persist on every layout change (debounced inside the saver).
+      api.onDidLayoutChange(() => scheduleLayoutSave())
     },
-    [setDockApi],
+    [setDockApi, layoutSnapshot, scheduleLayoutSave],
   )
 
   return (
@@ -406,43 +432,66 @@ export function AgentsLayout() {
   const dockviewThemeClass =
     resolvedTheme === "dark" ? "dockview-theme-dark" : "dockview-theme-light"
 
+  // Layout persistence — load once at mount, save (debounced) on every change.
+  const layoutSnapshot = useMemo(() => loadLayoutSnapshot(), [])
+  const layoutSaverRef = useRef(makeDebouncedSaver(300))
+  const [dockApi, setDockApi] = useState<DockviewApi | null>(null)
+
+  const scheduleLayoutSave = useCallback(() => {
+    layoutSaverRef.current.schedule(gridApiRef.current, dockApi)
+  }, [dockApi])
+
+  // Flush any pending save on unmount (e.g. window close).
+  useEffect(() => {
+    const saver = layoutSaverRef.current
+    return () => saver.flush()
+  }, [])
+
   const handleGridReady = useCallback(
     ({ api }: GridviewReadyEvent) => {
       gridApiRef.current = api
-      const initialWidth = Math.min(
-        Math.max(sidebarWidth ?? SIDEBAR_DEFAULT_WIDTH, SIDEBAR_MIN_WIDTH),
-        SIDEBAR_MAX_WIDTH,
-      )
-      api.addPanel({
-        id: "left-rail",
-        component: "left-rail",
-        minimumWidth: SIDEBAR_MIN_WIDTH,
-        maximumWidth: SIDEBAR_MAX_WIDTH,
-      })
-      api.addPanel({
-        id: "center",
-        component: "center",
-        priority: LayoutPriority.High,
-        position: { referencePanel: "left-rail", direction: "right" },
-      })
-      const left = api.getPanel("left-rail")
-      if (left) {
-        left.api.setSize({ width: initialWidth })
-        left.api.setVisible(!isMobile && sidebarOpen)
+
+      const { shell: restored } = tryRestore(api, null, layoutSnapshot)
+
+      if (!restored) {
+        // First-run / unrestorable: build the default 2-cell layout.
+        const initialWidth = Math.min(
+          Math.max(sidebarWidth ?? SIDEBAR_DEFAULT_WIDTH, SIDEBAR_MIN_WIDTH),
+          SIDEBAR_MAX_WIDTH,
+        )
+        api.addPanel({
+          id: "left-rail",
+          component: "left-rail",
+          minimumWidth: SIDEBAR_MIN_WIDTH,
+          maximumWidth: SIDEBAR_MAX_WIDTH,
+        })
+        api.addPanel({
+          id: "center",
+          component: "center",
+          priority: LayoutPriority.High,
+          position: { referencePanel: "left-rail", direction: "right" },
+        })
+        const left = api.getPanel("left-rail")
+        if (left) {
+          left.api.setSize({ width: initialWidth })
+          left.api.setVisible(!isMobile && sidebarOpen)
+        }
       }
-      // Persist width on layout change
+
+      // Persist width on layout change + schedule a snapshot save.
       api.onDidLayoutChange(() => {
         const panel = api.getPanel("left-rail")
         if (panel?.api.isVisible) {
           const w = panel.api.width
           if (w && w !== sidebarWidth) setSidebarWidth(w)
         }
+        scheduleLayoutSave()
       })
     },
     // Intentionally only on mount — subsequent atom changes are pushed via the
     // useEffect below; this callback only runs once when gridview is ready.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [],
+    [layoutSnapshot, scheduleLayoutSave],
   )
 
   // Sync sidebar open state with the gridview left panel.
@@ -457,10 +506,7 @@ export function AgentsLayout() {
     }
   }, [isMobile, sidebarOpen])
 
-  // DockviewApi is captured from the center cell's onReady; published to both
-  // the ShellContext (for descendants like CenterRailPanel) and DockProvider
-  // (for unrelated subtrees that need addPanel access via useDockApi).
-  const [dockApi, setDockApi] = useState<DockviewApi | null>(null)
+  // (DockviewApi state is declared earlier so the layout saver can capture it.)
 
   const shellCtxValue = useMemo<ShellContextValue>(
     () => ({
@@ -468,8 +514,10 @@ export function AgentsLayout() {
       onSignOut: handleSignOut,
       onToggleSidebar: handleCloseSidebar,
       setDockApi,
+      layoutSnapshot,
+      scheduleLayoutSave,
     }),
-    [desktopUser, handleSignOut, handleCloseSidebar],
+    [desktopUser, handleSignOut, handleCloseSidebar, layoutSnapshot, scheduleLayoutSave],
   )
 
   const dockHandles = useMemo<DockHandles>(
