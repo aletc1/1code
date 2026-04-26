@@ -30,7 +30,7 @@ import { ResizableSidebar } from "../../components/ui/resizable-sidebar"
 import { AgentsSidebar } from "../sidebar/agents-sidebar"
 import { AgentsContent } from "../agents/ui/agents-content"
 import { UpdateBanner } from "../../components/update-banner"
-import { WindowsTitleBar } from "../../components/windows-title-bar"
+import { TopBar } from "./top-bar"
 import { useUpdateChecker } from "../../lib/hooks/use-update-checker"
 import { useAgentSubChatStore } from "../agents/stores/sub-chat-store"
 import { QueueProcessor } from "../agents/components/queue-processor"
@@ -305,8 +305,9 @@ export function AgentsLayout() {
       />
       <CodexLoginModal />
       <div className="flex flex-col w-full h-full relative overflow-hidden bg-background select-none">
-        {/* Windows Title Bar (only shown on Windows with frameless window) */}
-        <WindowsTitleBar />
+        {/* Top bar — replaces the absolute 32px drag strip and the platform-
+            conditional WindowsTitleBar with a single unified bar. */}
+        <TopBar />
         <div className="flex flex-1 overflow-hidden">
           {/* Left Sidebar - switches between chat list and settings nav */}
           <ResizableSidebar
@@ -337,16 +338,6 @@ export function AgentsLayout() {
 
           {/* Main Content */}
           <div className="relative flex-1 overflow-hidden flex flex-col min-w-0">
-            {/* Draggable strip for window movement (hidden in fullscreen, handled by WindowsTitleBar on Windows) */}
-            {isDesktop && !isFullscreen && (
-              <div
-                className="absolute inset-x-0 top-0 h-[32px] z-0"
-                style={{
-                  // @ts-expect-error - WebKit-specific property
-                  WebkitAppRegion: "drag",
-                }}
-              />
-            )}
             <AgentsContent />
           </div>
         </div>
