@@ -11,6 +11,7 @@ import { useTheme } from "next-themes"
 import { dockviewComponents } from "./panel-registry"
 import { dockReadyAtom, widgetPanelMapAtom } from "./atoms"
 import { DockHeaderActions } from "./dock-header-actions"
+import { DockHeaderLeftActions } from "./dock-header-left-actions"
 import { RenamableTab } from "./renamable-tab"
 import {
   terminalsAtom,
@@ -124,6 +125,7 @@ export function DockShell({ onApiReady, className }: DockShellProps) {
       components={dockviewComponents}
       defaultTabComponent={RenamableTab}
       onReady={handleReady}
+      leftHeaderActionsComponent={DockHeaderLeftActions}
       rightHeaderActionsComponent={DockHeaderActions}
       theme={dockviewTheme}
     />

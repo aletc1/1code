@@ -223,7 +223,8 @@ import { AgentToolRegistry } from "../ui/agent-tool-registry"
 import { isPlanFile } from "../ui/agent-tool-utils"
 import { AgentUserMessageBubble } from "../ui/agent-user-message-bubble"
 import { AgentUserQuestion, type AgentUserQuestionHandle } from "../ui/agent-user-question"
-import { AgentsHeaderControls } from "../ui/agents-header-controls"
+// AgentsHeaderControls (the open-sidebar toggle) lives in the dockview group
+// left actions now — see [dock-header-left-actions.tsx].
 import { ChatTitleEditor } from "../ui/chat-title-editor"
 import { MobileChatHeader } from "../ui/mobile-chat-header"
 import { QuickCommentInput } from "../ui/quick-comment-input"
@@ -7643,19 +7644,13 @@ Make sure to preserve all functionality from both branches when resolving confli
                     />
                   ) : (
                     <>
-                      {/* Header controls - desktop only */}
-                      <AgentsHeaderControls
-                        isSidebarOpen={isSidebarOpen}
-                        onToggleSidebar={onToggleSidebar}
-                        hasUnseenChanges={hasAnyUnseenChanges}
-                        isSubChatsSidebarOpen={
-                          subChatsSidebarMode === "sidebar"
-                        }
-                      />
-                      {/* SubChatSelector removed — sub-chat tabs live in the
-                       * dockview tab strip now (see [chat-panel.tsx] and
-                       * [chat-panel-sync.tsx]). The internal strip used to
-                       * compete visually with dockview's own row. */}
+                      {/* Header controls (open-sidebar toggle) and the
+                       * SubChatSelector tab strip both moved to the dockview
+                       * group header — left actions for the sidebar toggle
+                       * (see [dock-header-left-actions.tsx]) and dockview's
+                       * own tab strip for the sub-chat list. The internal
+                       * strip used to compete visually with dockview's own
+                       * row. */}
                       {/* Open Locally button - desktop only, sandbox mode */}
                       {showOpenLocally && (
                         <Tooltip delayDuration={500}>
