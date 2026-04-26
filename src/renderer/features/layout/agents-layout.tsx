@@ -286,10 +286,9 @@ export function AgentsLayout() {
     setSelectedProject,
   ])
 
-  // Show/hide native traffic lights based on sidebar and fullscreen state
-  // This also re-syncs visibility when leaving fullscreen.
-  // When settings view is active, don't control traffic lights here —
-  // SettingsSidebar manages its own visibility (always hidden).
+  // TopBar always reserves the 78px traffic-light gutter on macOS, so the
+  // controls should be visible whenever the desktop chrome is. SettingsSidebar
+  // still manages its own (always hidden) overrides.
   const isSettingsView = desktopView === "settings"
   useEffect(() => {
     if (!isDesktop) return
@@ -300,8 +299,8 @@ export function AgentsLayout() {
     )
       return
 
-    window.desktopApi.setTrafficLightVisibility(sidebarOpen)
-  }, [sidebarOpen, isDesktop, isFullscreen, isSettingsView])
+    window.desktopApi.setTrafficLightVisibility(true)
+  }, [isDesktop, isFullscreen, isSettingsView])
 
   const setChatId = useAgentSubChatStore((state) => state.setChatId)
 
