@@ -2,6 +2,7 @@ import type { IDockviewPanelProps } from "dockview-react"
 import { PlaceholderPanel } from "./panels/placeholder-panel"
 import { MainPanel } from "./panels/main-panel"
 import { PlanPanel } from "./panels/plan-panel"
+import { DiffPanel } from "./panels/diff-panel"
 import type { PanelKind } from "./atoms"
 
 export type PanelComponent = React.FunctionComponent<IDockviewPanelProps>
@@ -12,7 +13,7 @@ export const PANEL_COMPONENTS: Record<PanelKind, PanelComponent> = {
   terminal: PlaceholderPanel,
   file: PlaceholderPanel,
   plan: PlanPanel,
-  diff: PlaceholderPanel,
+  diff: DiffPanel,
   search: PlaceholderPanel,
   "files-tree": PlaceholderPanel,
 }
