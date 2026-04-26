@@ -36,10 +36,11 @@ import { ClaudeLoginModal } from "../../components/dialogs/claude-login-modal"
 import { CodexLoginModal } from "../../components/dialogs/codex-login-modal"
 import { TooltipProvider } from "../../components/ui/tooltip"
 import { AgentsSidebar } from "../sidebar/agents-sidebar"
-import { AgentsContent } from "../agents/ui/agents-content"
 import { UpdateBanner } from "../../components/update-banner"
 import { TopBar } from "./top-bar"
 import { SettingsSidebar } from "../settings/settings-sidebar"
+import { DockShell, DockProvider, type DockHandles } from "../dock"
+import type { DockviewApi } from "dockview-react"
 import { useUpdateChecker } from "../../lib/hooks/use-update-checker"
 import { useAgentSubChatStore } from "../agents/stores/sub-chat-store"
 import { QueueProcessor } from "../agents/components/queue-processor"
@@ -66,6 +67,7 @@ interface ShellContextValue {
   } | null
   onSignOut: () => Promise<void>
   onToggleSidebar: () => void
+  setDockApi: (api: DockviewApi) => void
 }
 
 const ShellContext = createContext<ShellContextValue | null>(null)
@@ -114,9 +116,29 @@ function LeftRailPanel(_props: IGridviewPanelProps) {
 }
 
 function CenterRailPanel(_props: IGridviewPanelProps) {
+  const setDockApi = useShellContext().setDockApi
+
+  const handleDockReady = useCallback(
+    (api: DockviewApi) => {
+      setDockApi(api)
+      // Mount the singleton workspace shell. Step 6 will replace this with
+      // one `chat` panel per sub-chat, but today the existing chat experience
+      // (sub-chat tabs + ChatView + nested DetailsSidebar) lives inside this
+      // single "main" panel.
+      if (!api.getPanel("main")) {
+        api.addPanel({
+          id: "main",
+          component: "main",
+          title: "Workspace",
+        })
+      }
+    },
+    [setDockApi],
+  )
+
   return (
     <div className="relative h-full w-full overflow-hidden flex flex-col min-w-0">
-      <AgentsContent />
+      <DockShell onApiReady={handleDockReady} className="h-full w-full" />
     </div>
   )
 }
@@ -435,13 +457,24 @@ export function AgentsLayout() {
     }
   }, [isMobile, sidebarOpen])
 
+  // DockviewApi is captured from the center cell's onReady; published to both
+  // the ShellContext (for descendants like CenterRailPanel) and DockProvider
+  // (for unrelated subtrees that need addPanel access via useDockApi).
+  const [dockApi, setDockApi] = useState<DockviewApi | null>(null)
+
   const shellCtxValue = useMemo<ShellContextValue>(
     () => ({
       desktopUser,
       onSignOut: handleSignOut,
       onToggleSidebar: handleCloseSidebar,
+      setDockApi,
     }),
     [desktopUser, handleSignOut, handleCloseSidebar],
+  )
+
+  const dockHandles = useMemo<DockHandles>(
+    () => ({ dock: dockApi, grid: gridApiRef.current }),
+    [dockApi],
   )
 
   return (
@@ -455,22 +488,24 @@ export function AgentsLayout() {
         autoStartAuth={claudeLoginModalConfig.autoStartAuth}
       />
       <CodexLoginModal />
-      <ShellProvider value={shellCtxValue}>
-        <div className="flex flex-col w-full h-full relative overflow-hidden bg-background select-none">
-          <TopBar />
-          <div className={`flex-1 min-h-0 ${dockviewThemeClass}`}>
-            <GridviewReact
-              orientation={Orientation.HORIZONTAL}
-              components={GRID_COMPONENTS}
-              onReady={handleGridReady}
-              proportionalLayout={false}
-              className="h-full w-full"
-            />
+      <DockProvider value={dockHandles}>
+        <ShellProvider value={shellCtxValue}>
+          <div className="flex flex-col w-full h-full relative overflow-hidden bg-background select-none">
+            <TopBar />
+            <div className={`flex-1 min-h-0 ${dockviewThemeClass}`}>
+              <GridviewReact
+                orientation={Orientation.HORIZONTAL}
+                components={GRID_COMPONENTS}
+                onReady={handleGridReady}
+                proportionalLayout={false}
+                className="h-full w-full"
+              />
+            </div>
+            {/* UPDATES-DISABLED: re-enable to restore update banner */}
+            {/* <UpdateBanner /> */}
           </div>
-          {/* UPDATES-DISABLED: re-enable to restore update banner */}
-          {/* <UpdateBanner /> */}
-        </div>
-      </ShellProvider>
+        </ShellProvider>
+      </DockProvider>
     </TooltipProvider>
   )
 }
