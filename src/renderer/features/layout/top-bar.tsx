@@ -1,7 +1,6 @@
 import { MessageSquare, Terminal as TerminalIcon } from "lucide-react"
 import { isMacOS, isWindows as isWindowsPlatform } from "../../lib/utils/platform"
 import { WindowsTitleBar } from "../../components/windows-title-bar"
-import { Button } from "../../components/ui/button"
 import {
   Tooltip,
   TooltipContent,
@@ -14,6 +13,13 @@ import { usePanelActions } from "../dock"
  * 78px traffic-light gutter. Hosts the high-frequency quick-launch buttons
  * (Chat, Terminal). The "rest" of the panel-launch menu lives inside the
  * dockview's right header actions ([+] dropdown), one per group.
+ *
+ * Sizing is deliberately hand-rolled (raw <button> + inline width/height)
+ * rather than the shadcn Button component: cva + tailwind-merge swallowed
+ * size overrides under `size="icon"` (h-7 w-7) and the buttons came out 4 px
+ * taller than the macOS traffic-lights, leaving them visibly mis-aligned.
+ * Hard-coded 22 px buttons in a 28 px bar place the centerline at y=14, which
+ * matches the OS-positioned traffic-light center at y≈13.
  */
 export function TopBar() {
   // Windows still uses its custom titlebar with min/max/close controls.
@@ -30,22 +36,19 @@ export function TopBar() {
       }}
       data-app-top-bar
     >
-      {/* macOS traffic-light gutter (titleBarStyle: hiddenInset). 78px reserves
-          space for the three native circles (~7,6 origin · 14px each · 8px
-          gaps). Bar height (h-7 = 28px) + h-6 buttons (24px) puts the button
-          centerline at y=14, matching the traffic-light center at y≈13. */}
+      {/* macOS traffic-light gutter (titleBarStyle: hiddenInset). */}
       {isMacOS() ? <div className="w-[78px] shrink-0 h-full" /> : null}
 
-      {/* Quick-launch zone — vertically centered icon buttons. */}
+      {/* Quick-launch zone — buttons are positioned manually for pixel-perfect
+          alignment with the OS traffic-lights. */}
       <div
-        className="flex items-center h-full gap-0.5 px-1"
+        className="flex items-center h-full gap-0.5 pl-1"
         style={{
           // @ts-expect-error - WebKit-specific
           WebkitAppRegion: "no-drag",
         }}
       >
-        <QuickLaunchChatButton />
-        <QuickLaunchTerminalButton />
+        <QuickLaunchButtons />
       </div>
 
       {/* Remaining width is drag area. */}
@@ -54,44 +57,58 @@ export function TopBar() {
   )
 }
 
-function QuickLaunchChatButton() {
+function QuickLaunchButtons() {
   const actions = usePanelActions()
   return (
-    <Tooltip>
-      <TooltipTrigger asChild>
-        <Button
-          variant="ghost"
-          size="icon"
-          className="h-6 w-6"
-          aria-label="Show chat"
-          disabled={!actions.canFocusChat}
-          onClick={actions.focusChat}
-        >
-          <MessageSquare className="h-3 w-3" />
-        </Button>
-      </TooltipTrigger>
-      <TooltipContent side="bottom">Show chat</TooltipContent>
-    </Tooltip>
+    <>
+      <QuickLaunchButton
+        tooltip="Show chat"
+        ariaLabel="Show chat"
+        icon={<MessageSquare style={{ width: 12, height: 12 }} />}
+        disabled={!actions.canFocusChat}
+        onClick={actions.focusChat}
+      />
+      <QuickLaunchButton
+        tooltip="New terminal"
+        ariaLabel="New terminal"
+        icon={<TerminalIcon style={{ width: 12, height: 12 }} />}
+        disabled={!actions.canOpenTerminal}
+        onClick={actions.openTerminal}
+      />
+    </>
   )
 }
 
-function QuickLaunchTerminalButton() {
-  const actions = usePanelActions()
+interface QuickLaunchButtonProps {
+  tooltip: string
+  ariaLabel: string
+  icon: React.ReactNode
+  disabled: boolean
+  onClick: () => void
+}
+
+function QuickLaunchButton({
+  tooltip,
+  ariaLabel,
+  icon,
+  disabled,
+  onClick,
+}: QuickLaunchButtonProps) {
   return (
     <Tooltip>
       <TooltipTrigger asChild>
-        <Button
-          variant="ghost"
-          size="icon"
-          className="h-6 w-6"
-          aria-label="New terminal"
-          disabled={!actions.canOpenTerminal}
-          onClick={actions.openTerminal}
+        <button
+          type="button"
+          aria-label={ariaLabel}
+          disabled={disabled}
+          onClick={onClick}
+          className="inline-flex items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground disabled:opacity-50 disabled:pointer-events-none transition-colors"
+          style={{ width: 22, height: 22 }}
         >
-          <TerminalIcon className="h-3 w-3" />
-        </Button>
+          {icon}
+        </button>
       </TooltipTrigger>
-      <TooltipContent side="bottom">New terminal</TooltipContent>
+      <TooltipContent side="bottom">{tooltip}</TooltipContent>
     </Tooltip>
   )
 }

@@ -442,6 +442,21 @@ export function AgentsLayout() {
   const dockviewThemeClass =
     resolvedTheme === "dark" ? "dockview-theme-dark" : "dockview-theme-light"
 
+  // Apply the dockview theme class to <html> so the cascade reaches every
+  // dockview element regardless of which DOM subtree (or React portal target)
+  // it renders into. Putting it on a wrapper div was unreliable: dockview's
+  // group/panel containers sometimes sit outside the wrapper depending on how
+  // gridview's portals resolve, so the cascade missed them and the chat panel
+  // kept inheriting dockview's #1e1e1e default.
+  useEffect(() => {
+    const html = document.documentElement
+    html.classList.remove("dockview-theme-light", "dockview-theme-dark")
+    html.classList.add(dockviewThemeClass)
+    return () => {
+      html.classList.remove("dockview-theme-light", "dockview-theme-dark")
+    }
+  }, [dockviewThemeClass])
+
   // Layout persistence — load once at mount, save (debounced) on every change.
   const layoutSnapshot = useMemo(() => loadLayoutSnapshot(), [])
   const layoutSaverRef = useRef(makeDebouncedSaver(300))
@@ -582,7 +597,7 @@ export function AgentsLayout() {
         <ShellProvider value={shellCtxValue}>
           <div className="flex flex-col w-full h-full relative overflow-hidden bg-background select-none">
             <TopBar />
-            <div className={`flex-1 min-h-0 ${dockviewThemeClass}`}>
+            <div className="flex-1 min-h-0">
               <GridviewReact
                 orientation={Orientation.HORIZONTAL}
                 components={GRID_COMPONENTS}
