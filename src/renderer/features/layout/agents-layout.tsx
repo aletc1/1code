@@ -1,6 +1,15 @@
-import { useCallback, useEffect, useState, useMemo, useRef } from "react"
+import { useCallback, useContext, useEffect, useState, useMemo, useRef, createContext, type ReactNode } from "react"
 import { useAtom, useAtomValue, useSetAtom } from "jotai"
 import { toast } from "sonner"
+import { useTheme } from "next-themes"
+import {
+  GridviewReact,
+  Orientation,
+  LayoutPriority,
+  type GridviewApi,
+  type GridviewReadyEvent,
+  type IGridviewPanelProps,
+} from "dockview-react"
 import { isDesktopApp } from "../../lib/utils/platform"
 import { useIsMobile } from "../../lib/hooks/use-mobile"
 
@@ -26,24 +35,96 @@ import { toggleSearchAtom } from "../agents/search"
 import { ClaudeLoginModal } from "../../components/dialogs/claude-login-modal"
 import { CodexLoginModal } from "../../components/dialogs/codex-login-modal"
 import { TooltipProvider } from "../../components/ui/tooltip"
-import { ResizableSidebar } from "../../components/ui/resizable-sidebar"
 import { AgentsSidebar } from "../sidebar/agents-sidebar"
 import { AgentsContent } from "../agents/ui/agents-content"
 import { UpdateBanner } from "../../components/update-banner"
 import { TopBar } from "./top-bar"
+import { SettingsSidebar } from "../settings/settings-sidebar"
 import { useUpdateChecker } from "../../lib/hooks/use-update-checker"
 import { useAgentSubChatStore } from "../agents/stores/sub-chat-store"
 import { QueueProcessor } from "../agents/components/queue-processor"
-import { SettingsSidebar } from "../settings/settings-sidebar"
 
 // ============================================================================
 // Constants
 // ============================================================================
 
 const SIDEBAR_MIN_WIDTH = 160
-const SIDEBAR_MAX_WIDTH = 300
-const SIDEBAR_ANIMATION_DURATION = 0
-const SIDEBAR_CLOSE_HOTKEY = "⌘\\"
+const SIDEBAR_MAX_WIDTH = 600
+const SIDEBAR_DEFAULT_WIDTH = 240
+
+// ============================================================================
+// Shell context — bridges parent state into gridview panel renderers
+// ============================================================================
+
+interface ShellContextValue {
+  desktopUser: {
+    id: string
+    email: string
+    name: string | null
+    imageUrl: string | null
+    username: string | null
+  } | null
+  onSignOut: () => Promise<void>
+  onToggleSidebar: () => void
+}
+
+const ShellContext = createContext<ShellContextValue | null>(null)
+
+function ShellProvider({
+  value,
+  children,
+}: {
+  value: ShellContextValue
+  children: ReactNode
+}) {
+  return <ShellContext.Provider value={value}>{children}</ShellContext.Provider>
+}
+
+function useShellContext(): ShellContextValue {
+  const ctx = useContext(ShellContext)
+  if (!ctx) throw new Error("useShellContext must be used inside ShellProvider")
+  return ctx
+}
+
+// ============================================================================
+// Gridview panel renderers
+// ============================================================================
+
+function LeftRailPanel(_props: IGridviewPanelProps) {
+  const { desktopUser, onSignOut, onToggleSidebar } = useShellContext()
+  const desktopView = useAtomValue(desktopViewAtom)
+  const isSettingsView = desktopView === "settings"
+
+  return (
+    <div
+      className="h-full w-full overflow-hidden bg-background border-r"
+      style={{ borderRightWidth: "0.5px" }}
+    >
+      {isSettingsView ? (
+        <SettingsSidebar />
+      ) : (
+        <AgentsSidebar
+          desktopUser={desktopUser}
+          onSignOut={onSignOut}
+          onToggleSidebar={onToggleSidebar}
+        />
+      )}
+    </div>
+  )
+}
+
+function CenterRailPanel(_props: IGridviewPanelProps) {
+  return (
+    <div className="relative h-full w-full overflow-hidden flex flex-col min-w-0">
+      <AgentsContent />
+    </div>
+  )
+}
+
+const GRID_COMPONENTS: Record<string, React.FunctionComponent<IGridviewPanelProps>> = {
+  "left-rail": LeftRailPanel,
+  "center": CenterRailPanel,
+}
 
 // ============================================================================
 // Component
@@ -293,6 +374,76 @@ export function AgentsLayout() {
     setSidebarOpen(false)
   }, [setSidebarOpen])
 
+  // ============================================================================
+  // Gridview wiring — outer 3-column shell (left rail / center / right rail).
+  // Right rail is added in step 5 when DetailsSidebar is lifted out of ChatView.
+  // ============================================================================
+
+  const gridApiRef = useRef<GridviewApi | null>(null)
+  const { resolvedTheme } = useTheme()
+  const dockviewThemeClass =
+    resolvedTheme === "dark" ? "dockview-theme-dark" : "dockview-theme-light"
+
+  const handleGridReady = useCallback(
+    ({ api }: GridviewReadyEvent) => {
+      gridApiRef.current = api
+      const initialWidth = Math.min(
+        Math.max(sidebarWidth ?? SIDEBAR_DEFAULT_WIDTH, SIDEBAR_MIN_WIDTH),
+        SIDEBAR_MAX_WIDTH,
+      )
+      api.addPanel({
+        id: "left-rail",
+        component: "left-rail",
+        minimumWidth: SIDEBAR_MIN_WIDTH,
+        maximumWidth: SIDEBAR_MAX_WIDTH,
+      })
+      api.addPanel({
+        id: "center",
+        component: "center",
+        priority: LayoutPriority.High,
+        position: { referencePanel: "left-rail", direction: "right" },
+      })
+      const left = api.getPanel("left-rail")
+      if (left) {
+        left.api.setSize({ width: initialWidth })
+        api.setVisible(left, !isMobile && sidebarOpen)
+      }
+      // Persist width on layout change
+      api.onDidLayoutChange(() => {
+        const panel = api.getPanel("left-rail")
+        if (panel?.api.isVisible) {
+          const w = panel.api.width
+          if (w && w !== sidebarWidth) setSidebarWidth(w)
+        }
+      })
+    },
+    // Intentionally only on mount — subsequent atom changes are pushed via the
+    // useEffect below; this callback only runs once when gridview is ready.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [],
+  )
+
+  // Sync sidebar open state with the gridview left panel.
+  useEffect(() => {
+    const api = gridApiRef.current
+    if (!api) return
+    const left = api.getPanel("left-rail")
+    if (!left) return
+    const shouldShow = !isMobile && sidebarOpen
+    if (left.api.isVisible !== shouldShow) {
+      api.setVisible(left, shouldShow)
+    }
+  }, [isMobile, sidebarOpen])
+
+  const shellCtxValue = useMemo<ShellContextValue>(
+    () => ({
+      desktopUser,
+      onSignOut: handleSignOut,
+      onToggleSidebar: handleCloseSidebar,
+    }),
+    [desktopUser, handleSignOut, handleCloseSidebar],
+  )
+
   return (
     <TooltipProvider delayDuration={300}>
       {/* Global queue processor - handles message queues for all sub-chats */}
@@ -304,48 +455,22 @@ export function AgentsLayout() {
         autoStartAuth={claudeLoginModalConfig.autoStartAuth}
       />
       <CodexLoginModal />
-      <div className="flex flex-col w-full h-full relative overflow-hidden bg-background select-none">
-        {/* Top bar — replaces the absolute 32px drag strip and the platform-
-            conditional WindowsTitleBar with a single unified bar. */}
-        <TopBar />
-        <div className="flex flex-1 overflow-hidden">
-          {/* Left Sidebar - switches between chat list and settings nav */}
-          <ResizableSidebar
-          isOpen={!isMobile && sidebarOpen}
-          onClose={handleCloseSidebar}
-          widthAtom={agentsSidebarWidthAtom}
-          minWidth={SIDEBAR_MIN_WIDTH}
-          maxWidth={SIDEBAR_MAX_WIDTH}
-          side="left"
-          closeHotkey={SIDEBAR_CLOSE_HOTKEY}
-          animationDuration={SIDEBAR_ANIMATION_DURATION}
-          initialWidth={0}
-          exitWidth={0}
-          showResizeTooltip={!isSettingsView}
-          className="overflow-hidden bg-background border-r"
-          style={{ borderRightWidth: "0.5px" }}
-        >
-          {isSettingsView ? (
-            <SettingsSidebar />
-          ) : (
-            <AgentsSidebar
-              desktopUser={desktopUser}
-              onSignOut={handleSignOut}
-              onToggleSidebar={handleCloseSidebar}
+      <ShellProvider value={shellCtxValue}>
+        <div className="flex flex-col w-full h-full relative overflow-hidden bg-background select-none">
+          <TopBar />
+          <div className={`flex-1 min-h-0 ${dockviewThemeClass}`}>
+            <GridviewReact
+              orientation={Orientation.HORIZONTAL}
+              components={GRID_COMPONENTS}
+              onReady={handleGridReady}
+              proportionalLayout={false}
+              className="h-full w-full"
             />
-          )}
-        </ResizableSidebar>
-
-          {/* Main Content */}
-          <div className="relative flex-1 overflow-hidden flex flex-col min-w-0">
-            <AgentsContent />
           </div>
+          {/* UPDATES-DISABLED: re-enable to restore update banner */}
+          {/* <UpdateBanner /> */}
         </div>
-
-        {/* UPDATES-DISABLED: re-enable to restore update banner */}
-        {/* Update Banner */}
-        {/* <UpdateBanner /> */}
-      </div>
+      </ShellProvider>
     </TooltipProvider>
   )
 }

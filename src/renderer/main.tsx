@@ -11,6 +11,7 @@ if (import.meta.env.PROD) {
 import ReactDOM from "react-dom/client"
 import { App } from "./App"
 import "./styles/globals.css"
+import "dockview-react/dist/styles/dockview.css"
 import { preloadDiffHighlighter } from "./lib/themes/diff-view-highlighter"
 
 // Preload shiki highlighter for diff view (prevents delay when opening diff sidebar)
