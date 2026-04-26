@@ -23,14 +23,17 @@ export function TopBar() {
 
   return (
     <div
-      className="h-10 flex-shrink-0 flex items-center bg-background border-b border-border/50 select-none"
+      className="h-8 flex-shrink-0 flex items-center bg-background border-b border-border/50 select-none"
       style={{
         // @ts-expect-error - WebKit-specific property for Electron window dragging
         WebkitAppRegion: "drag",
       }}
       data-app-top-bar
     >
-      {/* macOS traffic-light gutter (titleBarStyle: hiddenInset). */}
+      {/* macOS traffic-light gutter (titleBarStyle: hiddenInset). 78px reserves
+          space for the three native circles (~7,6 origin · 14px each · 8px
+          gaps). The bar height (h-8 = 32px) is tuned so h-6 icon buttons line
+          up with the traffic-light centerline. */}
       {isMacOS() ? <div className="w-[78px] shrink-0 h-full" /> : null}
 
       {/* Quick-launch zone — vertically centered icon buttons. */}
@@ -59,12 +62,12 @@ function QuickLaunchChatButton() {
         <Button
           variant="ghost"
           size="icon"
-          className="h-7 w-7"
+          className="h-6 w-6"
           aria-label="Show chat"
           disabled={!actions.canFocusChat}
           onClick={actions.focusChat}
         >
-          <MessageSquare className="h-3.5 w-3.5" />
+          <MessageSquare className="h-3 w-3" />
         </Button>
       </TooltipTrigger>
       <TooltipContent side="bottom">Show chat</TooltipContent>
@@ -80,12 +83,12 @@ function QuickLaunchTerminalButton() {
         <Button
           variant="ghost"
           size="icon"
-          className="h-7 w-7"
+          className="h-6 w-6"
           aria-label="New terminal"
           disabled={!actions.canOpenTerminal}
           onClick={actions.openTerminal}
         >
-          <TerminalIcon className="h-3.5 w-3.5" />
+          <TerminalIcon className="h-3 w-3" />
         </Button>
       </TooltipTrigger>
       <TooltipContent side="bottom">New terminal</TooltipContent>
