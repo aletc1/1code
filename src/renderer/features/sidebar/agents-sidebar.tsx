@@ -39,7 +39,7 @@ import {
   useRenameRemoteChat,
 } from "../../lib/hooks/use-remote-chats"
 import { usePrefetchLocalChat } from "../../lib/hooks/use-prefetch-local-chat"
-import { ArchivePopover } from "../agents/ui/archive-popover"
+// ArchivePopover import removed — archive history UI is gone.
 import { ChevronDown, MoreHorizontal, Columns3, ArrowUpRight, BarChart3 } from "lucide-react"
 import { useQuery } from "@tanstack/react-query"
 import { remoteTrpc } from "../../lib/remote-trpc"
@@ -1267,46 +1267,7 @@ const AutomationsButton = memo(function AutomationsButton() {
 
 // Isolated Archive Section - subscribes to archivePopoverOpenAtom internally
 // to prevent sidebar re-renders when popover opens/closes
-interface ArchiveSectionProps {
-  archivedChatsCount: number
-}
-
-const ArchiveSection = memo(function ArchiveSection({ archivedChatsCount }: ArchiveSectionProps) {
-  const archivePopoverOpen = useAtomValue(archivePopoverOpenAtom)
-  const [blockArchiveTooltip, setBlockArchiveTooltip] = useState(false)
-  const prevArchivePopoverOpen = useRef(false)
-  const archiveButtonRef = useRef<HTMLButtonElement>(null)
-
-  // Handle tooltip blocking when popover closes
-  useEffect(() => {
-    if (prevArchivePopoverOpen.current && !archivePopoverOpen) {
-      archiveButtonRef.current?.blur()
-      setBlockArchiveTooltip(true)
-      const timer = setTimeout(() => setBlockArchiveTooltip(false), 300)
-      prevArchivePopoverOpen.current = archivePopoverOpen
-      return () => clearTimeout(timer)
-    }
-    prevArchivePopoverOpen.current = archivePopoverOpen
-  }, [archivePopoverOpen])
-
-  if (archivedChatsCount === 0) return null
-
-  return (
-    <Tooltip
-      delayDuration={500}
-      open={archivePopoverOpen || blockArchiveTooltip ? false : undefined}
-    >
-      <TooltipTrigger asChild>
-        <div>
-          <ArchivePopover
-            trigger={<ArchiveButton ref={archiveButtonRef} />}
-          />
-        </div>
-      </TooltipTrigger>
-      <TooltipContent>Archive</TooltipContent>
-    </Tooltip>
-  )
-})
+// ArchiveSection removed — see comment near its callsite.
 
 // Isolated Sidebar Header - contains dropdown, traffic lights, close button
 // Subscribes to dropdown state internally to prevent sidebar re-renders
@@ -1982,25 +1943,16 @@ export function AgentsSidebar({
     return new Map(projects.map((p) => [p.id, p]))
   }, [projects])
 
-  // Fetch all archived chats (to get count)
-  const { data: archivedChats } = trpc.chats.listArchived.useQuery({})
-  const archivedChatsCount = archivedChats?.length ?? 0
+  // archivedChats / archivedChatsCount removed — listArchived is gone.
 
   // Get utils outside of callbacks - hooks must be called at top level
   const utils = trpc.useUtils()
 
-  // Unified undo stack for workspaces and sub-chats (Jotai atom)
+  // Unified undo stack for workspaces and sub-chats (Jotai atom). Workspace
+  // entries used to undo via trpc.chats.restore — without that route they
+  // become inert (the timeout still flushes the entry). Sub-chat undo
+  // (re-add to openSubChatIds) still works.
   const [undoStack, setUndoStack] = useAtom(undoStackAtom)
-
-  // Restore chat mutation (for undo)
-  const restoreChatMutation = trpc.chats.restore.useMutation({
-    onSuccess: (_, variables) => {
-      utils.chats.list.invalidate()
-      utils.chats.listArchived.invalidate()
-      // Select the restored chat
-      setSelectedChatId(variables.id)
-    },
-  })
 
   // Remove workspace item from stack by chatId
   const removeWorkspaceFromStack = useCallback((chatId: string) => {
@@ -2033,7 +1985,6 @@ export function AgentsSidebar({
       }
 
       utils.chats.list.invalidate()
-      utils.chats.listArchived.invalidate()
 
       // If archiving the currently selected chat, navigate based on auto-advance setting
       if (selectedChatId === variables.id) {
@@ -2106,9 +2057,10 @@ export function AgentsSidebar({
                 toast.error("Failed to restore workspace")
               },
             })
-          } else {
-            restoreChatMutation.mutate({ id: lastItem.chatId })
           }
+          // Local workspace restore is no-op now: trpc.chats.restore is gone.
+          // Cmd+Z still pops the undo entry; the chat row stays archivedAt-set
+          // in the DB but there's no UI surface for archived chats anyway.
         } else if (lastItem.type === "subchat") {
           // Restore sub-chat tab (re-add to open tabs)
           const store = useAgentSubChatStore.getState()
@@ -2120,7 +2072,7 @@ export function AgentsSidebar({
 
     window.addEventListener("keydown", handleKeyDown)
     return () => window.removeEventListener("keydown", handleKeyDown)
-  }, [undoStack, setUndoStack, restoreChatMutation, restoreRemoteChatMutation, setSelectedChatId])
+  }, [undoStack, setUndoStack, restoreRemoteChatMutation, setSelectedChatId, setSelectedChatIsRemote, setChatSourceMode])
 
   // Batch archive mutation
   const archiveChatsBatchMutation = trpc.chats.archiveBatch.useMutation({
@@ -2135,7 +2087,6 @@ export function AgentsSidebar({
       }
 
       utils.chats.list.invalidate()
-      utils.chats.listArchived.invalidate()
 
       // Add each chat to unified undo stack for Cmd+Z
       const newItems: UndoItem[] = variables.chatIds.map((chatId) => {
@@ -3488,8 +3439,9 @@ export function AgentsSidebar({
                 {/* Kanban View Button - isolated component */}
                 <KanbanButton />
 
-                {/* Archive Button - isolated component to prevent sidebar re-renders */}
-                <ArchiveSection archivedChatsCount={archivedChatsCount} />
+                {/* Archive section removed — archived chats can no longer be
+                 *  browsed or restored from the rail. The chats router now
+                 *  drops listArchived / restore / deleteAllArchived. */}
 
                 {/* Usage Button - opens the Usage statistics page */}
                 <UsageButton />
