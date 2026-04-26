@@ -11,6 +11,7 @@ import { useTheme } from "next-themes"
 import { dockviewComponents } from "./panel-registry"
 import { dockReadyAtom, widgetPanelMapAtom } from "./atoms"
 import { DockHeaderActions } from "./dock-header-actions"
+import { RenamableTab } from "./renamable-tab"
 import {
   terminalsAtom,
   activeTerminalIdAtom,
@@ -121,6 +122,7 @@ export function DockShell({ onApiReady, className }: DockShellProps) {
     <DockviewReact
       className={className}
       components={dockviewComponents}
+      defaultTabComponent={RenamableTab}
       onReady={handleReady}
       rightHeaderActionsComponent={DockHeaderActions}
       theme={dockviewTheme}

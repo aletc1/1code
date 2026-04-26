@@ -22,6 +22,7 @@ export { useWidgetPanel, type WidgetPanelHandle } from "./use-widget-panel"
 export { usePanelActions, type PanelActions } from "./use-panel-actions"
 export { DockHeaderActions } from "./dock-header-actions"
 export { ChatPanelSync } from "./chat-panel-sync"
+export { RenamableTab, RenameDispatchHost } from "./renamable-tab"
 export {
   loadLayoutSnapshot,
   saveLayoutSnapshot,
