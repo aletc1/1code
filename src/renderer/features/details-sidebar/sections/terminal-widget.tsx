@@ -26,6 +26,8 @@ import {
 import { trpc } from "@/lib/trpc"
 import type { TerminalInstance } from "@/features/terminal/types"
 import { cn } from "@/lib/utils"
+import { useWidgetPanel } from "../../dock"
+import { PromotedToPanelStub } from "./promoted-to-panel-stub"
 
 interface TerminalWidgetProps {
   chatId: string
@@ -66,6 +68,22 @@ export const TerminalWidget = memo(function TerminalWidget({
   workspaceId,
   onExpand,
 }: TerminalWidgetProps) {
+  // Widget ↔ panel mutex: when promoted to a dockview panel, hide the summary
+  // and render a small "return to summary" stub instead. The PTY sessions are
+  // preserved across the move via terminal.tsx's serialize/detach lifecycle.
+  const widgetPanel = useWidgetPanel("terminal", {
+    kind: "terminal",
+    data: { chatId, cwd, workspaceId },
+  })
+
+  const handleExpand = useCallback(() => {
+    if (widgetPanel.available) {
+      widgetPanel.openAsPanel()
+    } else {
+      onExpand?.()
+    }
+  }, [widgetPanel, onExpand])
+
   // Terminal state - reuse existing atoms
   const [allTerminals, setAllTerminals] = useAtom(terminalsAtom)
   const [allActiveIds, setAllActiveIds] = useAtom(activeTerminalIdAtom)
@@ -268,6 +286,13 @@ export const TerminalWidget = memo(function TerminalWidget({
     return () => clearTimeout(timer)
   }, [])
 
+  // Promoted to a dockview panel — render the stub instead of the summary.
+  if (widgetPanel.isOpen) {
+    return (
+      <PromotedToPanelStub label="Terminal" onReturnToSummary={widgetPanel.closePanel} />
+    )
+  }
+
   return (
     <div className="mx-2 mb-2">
       <div className={cn("rounded-lg border border-border/50 overflow-hidden")}>
@@ -311,14 +336,14 @@ export const TerminalWidget = memo(function TerminalWidget({
             <TooltipContent side="bottom">New terminal</TooltipContent>
           </Tooltip>
 
-          {/* Expand to sidebar button */}
-          {onExpand && (
+          {/* Expand to sidebar / panel button */}
+          {(onExpand || widgetPanel.available) && (
             <Tooltip>
               <TooltipTrigger asChild>
                 <Button
                   variant="ghost"
                   size="icon"
-                  onClick={onExpand}
+                  onClick={handleExpand}
                   className="h-5 w-5 p-0 hover:bg-foreground/10 text-muted-foreground hover:text-foreground rounded-md opacity-0 group-hover:opacity-100 transition-[background-color,opacity,transform] duration-150 ease-out active:scale-[0.97] flex-shrink-0"
                   aria-label="Expand terminal"
                 >

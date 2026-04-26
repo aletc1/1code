@@ -3,6 +3,7 @@ import { PlaceholderPanel } from "./panels/placeholder-panel"
 import { MainPanel } from "./panels/main-panel"
 import { PlanPanel } from "./panels/plan-panel"
 import { DiffPanel } from "./panels/diff-panel"
+import { TerminalPanel } from "./panels/terminal-panel"
 import type { PanelKind } from "./atoms"
 
 export type PanelComponent = React.FunctionComponent<IDockviewPanelProps>
@@ -10,7 +11,7 @@ export type PanelComponent = React.FunctionComponent<IDockviewPanelProps>
 export const PANEL_COMPONENTS: Record<PanelKind, PanelComponent> = {
   chat: PlaceholderPanel,
   "chat-new": PlaceholderPanel,
-  terminal: PlaceholderPanel,
+  terminal: TerminalPanel,
   file: PlaceholderPanel,
   plan: PlanPanel,
   diff: DiffPanel,

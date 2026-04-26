@@ -21,9 +21,13 @@ export interface NewChatPanelEntity {
   projectId: string
 }
 export interface TerminalPanelEntity {
-  paneId: string
-  name?: string
-  scopeKey: string
+  /** Chat workspace this terminal panel belongs to. The panel hosts multiple
+   *  terminal sessions internally (TerminalSection's tab strip). */
+  chatId: string
+  /** Working directory for new terminals. */
+  cwd: string
+  /** Persistence scope id (usually the same as chatId for local chats). */
+  workspaceId: string
 }
 export interface FilePanelEntity {
   absolutePath: string
@@ -63,7 +67,7 @@ export function panelIdFor(entity: PanelEntity): string {
     case "chat-new":
       return `chat-new:${entity.data.draftId ?? "singleton"}`
     case "terminal":
-      return `terminal:${entity.data.paneId}`
+      return `terminal:${entity.data.chatId}`
     case "file":
       return `file:${entity.data.absolutePath}`
     case "plan":
@@ -84,7 +88,7 @@ export function panelTitleFor(entity: PanelEntity): string {
     case "chat-new":
       return "New chat"
     case "terminal":
-      return entity.data.name ?? "Terminal"
+      return "Terminal"
     case "file": {
       const segs = entity.data.absolutePath.split("/")
       return segs[segs.length - 1] || entity.data.absolutePath
