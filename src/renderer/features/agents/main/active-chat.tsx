@@ -1942,7 +1942,10 @@ const DiffSidebarRenderer = memo(function DiffSidebarRenderer({
 
 // Inner chat component - only rendered when chat object is ready
 // Memoized to prevent re-renders when parent state changes (e.g., selectedFilePath)
-const ChatViewInner = memo(function ChatViewInner({
+//
+// Exported so the dockview ChatPanel can mount one ChatViewInner per sub-chat
+// (each sub-chat is a first-class dockview tab now — see [chat-panel.tsx]).
+export const ChatViewInner = memo(function ChatViewInner({
   chat,
   subChatId,
   parentChatId,

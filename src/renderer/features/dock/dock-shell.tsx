@@ -15,6 +15,7 @@ import {
   terminalsAtom,
   activeTerminalIdAtom,
 } from "../terminal/atoms"
+import { useAgentSubChatStore } from "../agents/stores/sub-chat-store"
 import { trpc } from "../../lib/trpc"
 
 export interface DockShellProps {
@@ -93,6 +94,18 @@ export function DockShell({ onApiReady, className }: DockShellProps) {
               // handles it). Otherwise leave as-is.
               return prev
             })
+          }
+        }
+
+        // Chat cleanup — when a `chat:` panel is closed via dockview's tab
+        // X, mirror that into the sub-chat store so the rail / `openSubChatIds`
+        // forget about it. The store's `removeFromOpenSubChats` handles the
+        // active-fallback logic.
+        if (panel.id.startsWith("chat:")) {
+          const subChatId = panel.id.slice("chat:".length)
+          if (subChatId) {
+            const remove = useAgentSubChatStore.getState().removeFromOpenSubChats
+            remove(subChatId)
           }
         }
       })

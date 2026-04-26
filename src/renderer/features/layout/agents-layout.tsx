@@ -47,6 +47,7 @@ import {
 import {
   DockShell,
   DockProvider,
+  ChatPanelSync,
   loadLayoutSnapshot,
   makeDebouncedSaver,
   tryRestore,
@@ -595,6 +596,7 @@ export function AgentsLayout() {
       />
       <CodexLoginModal />
       <DockProvider value={dockHandles}>
+        <ChatPanelSync />
         <ShellProvider value={shellCtxValue}>
           <div className="flex flex-col w-full h-full relative overflow-hidden bg-background select-none">
             {/* Windows-only custom title bar (frameless window with min/max/close).

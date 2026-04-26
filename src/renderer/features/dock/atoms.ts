@@ -14,7 +14,12 @@ export type PanelKind =
 
 export interface ChatPanelEntity {
   subChatId: string
+  /** Parent chat (workspace) id this sub-chat belongs to. Used by ChatPanel
+   *  to look up the chat record / sub-chats list. */
   chatId: string
+  /** Initial display name — kept in sync via setTitle when the sub-chat
+   *  is renamed in the store. */
+  name?: string
 }
 export interface NewChatPanelEntity {
   draftId?: string
@@ -90,7 +95,7 @@ export function panelIdFor(entity: PanelEntity): string {
 export function panelTitleFor(entity: PanelEntity): string {
   switch (entity.kind) {
     case "chat":
-      return "Chat"
+      return entity.data.name ?? "Conversation"
     case "chat-new":
       return "New chat"
     case "terminal":

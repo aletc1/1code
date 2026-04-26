@@ -1,6 +1,7 @@
 import type { IDockviewPanelProps } from "dockview-react"
 import { PlaceholderPanel } from "./panels/placeholder-panel"
 import { MainPanel } from "./panels/main-panel"
+import { ChatPanel } from "./panels/chat-panel"
 import { PlanPanel } from "./panels/plan-panel"
 import { DiffPanel } from "./panels/diff-panel"
 import { TerminalPanel } from "./panels/terminal-panel"
@@ -12,7 +13,7 @@ import type { PanelKind } from "./atoms"
 export type PanelComponent = React.FunctionComponent<IDockviewPanelProps>
 
 export const PANEL_COMPONENTS: Record<PanelKind, PanelComponent> = {
-  chat: PlaceholderPanel,
+  chat: ChatPanel,
   "chat-new": PlaceholderPanel,
   terminal: TerminalPanel,
   file: FilePanel,
