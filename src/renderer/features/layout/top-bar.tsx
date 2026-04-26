@@ -23,7 +23,7 @@ export function TopBar() {
 
   return (
     <div
-      className="h-8 flex-shrink-0 flex items-center bg-background border-b border-border/50 select-none"
+      className="h-7 flex-shrink-0 flex items-center bg-background border-b border-border/50 select-none"
       style={{
         // @ts-expect-error - WebKit-specific property for Electron window dragging
         WebkitAppRegion: "drag",
@@ -32,8 +32,8 @@ export function TopBar() {
     >
       {/* macOS traffic-light gutter (titleBarStyle: hiddenInset). 78px reserves
           space for the three native circles (~7,6 origin · 14px each · 8px
-          gaps). The bar height (h-8 = 32px) is tuned so h-6 icon buttons line
-          up with the traffic-light centerline. */}
+          gaps). Bar height (h-7 = 28px) + h-6 buttons (24px) puts the button
+          centerline at y=14, matching the traffic-light center at y≈13. */}
       {isMacOS() ? <div className="w-[78px] shrink-0 h-full" /> : null}
 
       {/* Quick-launch zone — vertically centered icon buttons. */}
