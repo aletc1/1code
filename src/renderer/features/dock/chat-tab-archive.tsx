@@ -17,13 +17,16 @@ import { useDockApi } from "./dock-context"
 /**
  * "Archive chat" flow for the X on a chat: tab.
  *
- * Mirrors `handleArchiveSubChat` from agents-subchats-sidebar:
- * - When closing one of *several* open sub-chats, removeFromOpenSubChats is
- *   enough — the sub-chat stays in `allSubChats` for history, the panel
- *   closes (via DockShell.onDidRemovePanel) and Cmd+Z can reopen it.
- * - When closing the *last* open sub-chat there's no chat left to look at,
- *   so we treat it as "archive the workspace": confirm dialog → trpc
- *   archive mutation → store cleanup → all chat panels close.
+ * Always shows a confirm dialog before doing anything destructive — the
+ * X click never silently closes a chat. The action on confirm depends
+ * on how many chats are open:
+ * - Multiple chats open → drop just this one from openSubChatIds. The
+ *   sub-chat stays in `allSubChats` for history, the dockview panel
+ *   closes via DockShell.onDidRemovePanel, Cmd+Z can reopen it.
+ * - Last chat open → archive the parent workspace via trpc.chats.archive
+ *   (in practice the X is `disabled` in this state — see
+ *   [renamable-tab.tsx] — but the path stays here as a safeguard for
+ *   keyboard / programmatic clicks).
  *
  * Wiring matches the rename dispatch in [renamable-tab.tsx]: a host
  * component captures the dispatcher into a module-level slot so the
@@ -44,8 +47,11 @@ export function ChatTabArchiveHost() {
   const archiveChat = trpc.chats.archive.useMutation()
   const [pendingArchive, setPendingArchive] = useState<{
     subChatId: string
-    parentChatId: string
+    parentChatId: string | null
     name: string
+    /** When true, confirming archives the parent workspace. When false,
+     *  confirming just drops the sub-chat from openSubChatIds. */
+    archivesWorkspace: boolean
   } | null>(null)
 
   const dispatch = useCallback(
@@ -54,24 +60,13 @@ export function ChatTabArchiveHost() {
       const subChatId = panelId.slice("chat:".length)
       const store = useAgentSubChatStore.getState()
       const openCount = store.openSubChatIds.length
-      // If multiple sub-chats are open, drop just this one — same as the
-      // sidebar's handleArchiveSubChat (no dialog, easy undo).
-      if (openCount > 1) {
-        store.removeFromOpenSubChats(subChatId)
-        return
-      }
-      // Last sub-chat — confirm and then archive the parent workspace.
       const parentChatId = store.chatId
-      if (!parentChatId) {
-        // No parent context (shouldn't happen) — best-effort silent close.
-        store.removeFromOpenSubChats(subChatId)
-        return
-      }
       const sc = store.allSubChats.find((s) => s.id === subChatId)
       setPendingArchive({
         subChatId,
         parentChatId,
         name: sc?.name || "this chat",
+        archivesWorkspace: openCount <= 1,
       })
     },
     [],
@@ -86,14 +81,29 @@ export function ChatTabArchiveHost() {
 
   const handleConfirm = useCallback(() => {
     if (!pendingArchive) return
-    const { parentChatId, subChatId } = pendingArchive
+    const { parentChatId, subChatId, archivesWorkspace } = pendingArchive
     setPendingArchive(null)
+
+    // Common path: drop this one sub-chat from openSubChatIds. The
+    // matching dockview panel closes via DockShell.onDidRemovePanel.
+    const dropFromOpen = () =>
+      useAgentSubChatStore.getState().removeFromOpenSubChats(subChatId)
+
+    if (!archivesWorkspace) {
+      dropFromOpen()
+      return
+    }
+
+    // Last-chat safeguard — archive the workspace too.
+    if (!parentChatId) {
+      // No parent context (shouldn't happen) — best-effort drop.
+      dropFromOpen()
+      return
+    }
     archiveChat
       .mutateAsync({ id: parentChatId })
       .then(() => {
-        // Drop the sub-chat from the rail/store; ChatPanelSync closes the
-        // dockview panel as a consequence.
-        useAgentSubChatStore.getState().removeFromOpenSubChats(subChatId)
+        dropFromOpen()
         // Close any other chat: panels that belong to this archived
         // workspace too — dockview sees the parent gone via the chats list
         // refresh, but we explicitly close to keep the UI immediate.
