@@ -824,13 +824,14 @@ export function AgentsContent() {
     selectedChatId !== null &&
     (subChatsStoreChatId !== selectedChatId || subChatsCount === 0)
 
-  // Track sub-chats sidebar open state for animation control
-  // Now renders even while loading to show spinner (mobile always uses tabs)
-  const isSubChatsSidebarOpen =
-    selectedChatId &&
-    subChatsSidebarMode === "sidebar" &&
-    !isMobile &&
-    !desktopView
+  // Sub-chats sidebar is permanently hidden — open sub-chats now appear as
+  // dockview tabs (see [chat-panel.tsx]) so the dedicated rail-within-rail
+  // is redundant. Keep the variable around so dependent effects below stay
+  // wired without touching them.
+  const isSubChatsSidebarOpen = false as const
+  void subChatsSidebarMode
+  void desktopView
+  void isMobile
 
   useEffect(() => {
     // When sidebar closes, reset for animation on next open
