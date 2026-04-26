@@ -9,6 +9,7 @@ import {
   Terminal as TerminalIcon,
 } from "lucide-react"
 import type { IDockviewHeaderActionsProps } from "dockview-react"
+import { Button } from "../../components/ui/button"
 import {
   DropdownMenu,
   DropdownMenuTrigger,
@@ -27,25 +28,33 @@ import { usePanelActions } from "./use-panel-actions"
  * Group-header actions on the right side of the dockview tab strip — one set
  * per group so users can target a specific group when adding panels. Holds
  * the quick-launch icons (Chat, Terminal) and the [+] dropdown ("the rest":
- * Files Tree, Search, Plan, Changes, Reset Layout). The TopBar is reserved
- * for the macOS traffic-lights and the window drag region only.
+ * Files Tree, Search, Plan, Changes, Reset Layout).
+ *
+ * Icon buttons match the existing app-wide pattern (h-6 w-6, h-4 w-4 icon)
+ * used by the chats sidebar so all top-row buttons line up.
  */
 export function DockHeaderActions(_props: IDockviewHeaderActionsProps) {
   const actions = usePanelActions()
 
   return (
-    <div className="flex items-center h-full px-0.5 gap-0.5">
+    <div
+      className="flex items-center h-full px-1 gap-0.5"
+      style={{
+        // @ts-expect-error - WebKit-specific property: keep buttons clickable
+        WebkitAppRegion: "no-drag",
+      }}
+    >
       <HeaderIconButton
         tooltip="Show chat"
         ariaLabel="Show chat"
-        icon={<MessageSquare style={{ width: 12, height: 12 }} />}
+        icon={<MessageSquare className="h-4 w-4" />}
         disabled={!actions.canFocusChat}
         onClick={actions.focusChat}
       />
       <HeaderIconButton
         tooltip="New terminal"
         ariaLabel="New terminal"
-        icon={<TerminalIcon style={{ width: 12, height: 12 }} />}
+        icon={<TerminalIcon className="h-4 w-4" />}
         disabled={!actions.canOpenTerminal}
         onClick={actions.openTerminal}
       />
@@ -53,14 +62,14 @@ export function DockHeaderActions(_props: IDockviewHeaderActionsProps) {
         <Tooltip>
           <TooltipTrigger asChild>
             <DropdownMenuTrigger asChild>
-              <button
-                type="button"
+              <Button
+                variant="ghost"
+                size="icon"
                 aria-label="Open a panel"
-                className="inline-flex items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground transition-colors"
-                style={{ width: 22, height: 22 }}
+                className="h-6 w-6 p-0 hover:bg-foreground/10 transition-[background-color,transform] duration-150 ease-out active:scale-[0.97] flex-shrink-0 rounded-md text-muted-foreground hover:text-foreground"
               >
-                <Plus style={{ width: 14, height: 14 }} />
-              </button>
+                <Plus className="h-4 w-4" />
+              </Button>
             </DropdownMenuTrigger>
           </TooltipTrigger>
           <TooltipContent side="bottom">Open a panel</TooltipContent>
@@ -124,16 +133,16 @@ function HeaderIconButton({
   return (
     <Tooltip>
       <TooltipTrigger asChild>
-        <button
-          type="button"
+        <Button
+          variant="ghost"
+          size="icon"
           aria-label={ariaLabel}
           disabled={disabled}
           onClick={onClick}
-          className="inline-flex items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground disabled:opacity-50 disabled:pointer-events-none transition-colors"
-          style={{ width: 22, height: 22 }}
+          className="h-6 w-6 p-0 hover:bg-foreground/10 transition-[background-color,transform] duration-150 ease-out active:scale-[0.97] flex-shrink-0 rounded-md text-muted-foreground hover:text-foreground disabled:opacity-50 disabled:pointer-events-none"
         >
           {icon}
-        </button>
+        </Button>
       </TooltipTrigger>
       <TooltipContent side="bottom">{tooltip}</TooltipContent>
     </Tooltip>

@@ -37,7 +37,7 @@ import { CodexLoginModal } from "../../components/dialogs/codex-login-modal"
 import { TooltipProvider } from "../../components/ui/tooltip"
 import { AgentsSidebar } from "../sidebar/agents-sidebar"
 import { UpdateBanner } from "../../components/update-banner"
-import { TopBar } from "./top-bar"
+import { WindowsTitleBar } from "../../components/windows-title-bar"
 import { DetailsRail } from "./details-rail"
 import { SettingsSidebar } from "../settings/settings-sidebar"
 import {
@@ -286,21 +286,22 @@ export function AgentsLayout() {
     setSelectedProject,
   ])
 
-  // TopBar always reserves the 78px traffic-light gutter on macOS, so the
-  // controls should be visible whenever the desktop chrome is. SettingsSidebar
-  // still manages its own (always hidden) overrides.
+  // Sync macOS traffic-light visibility with the left sidebar. The native
+  // chrome owns the top-left corner; when the sidebar is open it provides the
+  // 78px gutter, when closed we hide the lights so the content can flush left.
+  // SettingsSidebar manages its own (always hidden) overrides.
   const isSettingsView = desktopView === "settings"
   useEffect(() => {
     if (!isDesktop) return
-    if (isSettingsView) return // SettingsSidebar handles its own traffic light state
+    if (isSettingsView) return
     if (
       typeof window === "undefined" ||
       !window.desktopApi?.setTrafficLightVisibility
     )
       return
 
-    window.desktopApi.setTrafficLightVisibility(true)
-  }, [isDesktop, isFullscreen, isSettingsView])
+    window.desktopApi.setTrafficLightVisibility(sidebarOpen)
+  }, [sidebarOpen, isDesktop, isFullscreen, isSettingsView])
 
   const setChatId = useAgentSubChatStore((state) => state.setChatId)
 
@@ -596,7 +597,10 @@ export function AgentsLayout() {
       <DockProvider value={dockHandles}>
         <ShellProvider value={shellCtxValue}>
           <div className="flex flex-col w-full h-full relative overflow-hidden bg-background select-none">
-            <TopBar />
+            {/* Windows-only custom title bar (frameless window with min/max/close).
+                On macOS we let the native chrome show traffic lights over the
+                content; per-section drag strips provide the rest of the drag area. */}
+            <WindowsTitleBar />
             <div className="flex-1 min-h-0">
               <GridviewReact
                 orientation={Orientation.HORIZONTAL}

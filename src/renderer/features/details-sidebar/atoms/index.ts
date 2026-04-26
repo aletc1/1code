@@ -117,6 +117,15 @@ export const detailsSidebarOpenAtom = atomWithWindowStorage<boolean>(
   { getOnInit: true },
 )
 
+// Details sidebar active tab (per-window, persisted)
+export type DetailsSidebarTab = "details" | "files" | "search"
+
+export const detailsSidebarTabAtom = atomWithWindowStorage<DetailsSidebarTab>(
+  "overview:sidebarTab",
+  "details",
+  { getOnInit: true },
+)
+
 // Section types for the overview sidebar
 export type OverviewSection = "info" | "plan" | "terminal" | "diff"
 

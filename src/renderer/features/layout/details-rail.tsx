@@ -143,34 +143,29 @@ export function DetailsRail(_props: IGridviewPanelProps) {
   }
 
   return (
-    <div
-      className="h-full w-full overflow-hidden bg-background border-l"
-      style={{ borderLeftWidth: "0.5px" }}
-    >
-      <DetailsSidebar
-        chatId={chatId}
-        worktreePath={worktreePath}
-        planPath={planPath}
-        mode={currentMode}
-        planRefetchTrigger={planRefetchTrigger}
-        activeSubChatId={activeSubChatId}
-        canOpenDiff={canOpenDiff}
-        setIsDiffSidebarOpen={() => {
-          // Replaced by widget mutex; stubbed.
-        }}
-        diffStats={diffCache.diffStats}
-        parsedFileDiffs={diffCache.parsedFileDiffs}
-        onCommit={worktreePath ? handleCommit : undefined}
-        onCommitAndPush={worktreePath ? handleCommitAndPush : undefined}
-        isCommitting={isCommitting}
-        gitStatus={gitStatus ?? null}
-        isGitStatusLoading={isGitStatusLoading}
-        currentBranch={branchData?.current}
-        onFileSelect={handleFileSelect}
-        onOpenFile={handleOpenFile}
-        remoteInfo={remoteInfo}
-        isRemoteChat={!!remoteInfo}
-      />
-    </div>
+    <DetailsSidebar
+      chatId={chatId}
+      worktreePath={worktreePath}
+      planPath={planPath}
+      mode={currentMode}
+      planRefetchTrigger={planRefetchTrigger}
+      activeSubChatId={activeSubChatId}
+      canOpenDiff={canOpenDiff}
+      setIsDiffSidebarOpen={() => {
+        // Replaced by widget mutex; stubbed.
+      }}
+      diffStats={diffCache.diffStats}
+      parsedFileDiffs={diffCache.parsedFileDiffs}
+      onCommit={worktreePath ? handleCommit : undefined}
+      onCommitAndPush={worktreePath ? handleCommitAndPush : undefined}
+      isCommitting={isCommitting}
+      gitStatus={gitStatus ?? null}
+      isGitStatusLoading={isGitStatusLoading}
+      currentBranch={branchData?.current}
+      onFileSelect={handleFileSelect}
+      onOpenFile={handleOpenFile}
+      remoteInfo={remoteInfo}
+      isRemoteChat={!!remoteInfo}
+    />
   )
 }
