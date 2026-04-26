@@ -18,3 +18,4 @@ export {
 } from "./atoms"
 export { addOrFocus, type AddOrFocusOptions } from "./add-or-focus"
 export { PANEL_COMPONENTS, dockviewComponents } from "./panel-registry"
+export { useWidgetPanel, type WidgetPanelHandle } from "./use-widget-panel"

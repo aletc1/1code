@@ -10,6 +10,8 @@ import { ChatMarkdownRenderer } from "@/components/chat-markdown-renderer"
 import { trpc } from "@/lib/trpc"
 import { planContentCacheAtomFamily } from "../atoms"
 import type { AgentMode } from "../../agents/atoms"
+import { useWidgetPanel } from "../../dock"
+import { PromotedToPanelStub } from "./promoted-to-panel-stub"
 
 interface PlanWidgetProps {
   /** Chat ID for cache */
@@ -45,6 +47,15 @@ export const PlanWidget = memo(function PlanWidget({
 }: PlanWidgetProps) {
   // Use activeSubChatId for fetching if available
   const effectiveChatId = activeSubChatId || chatId
+
+  // Widget ↔ panel mutex: when promoted to a dockview panel, hide the summary
+  // and render a small "return to summary" stub instead. The mutex key is the
+  // (effectiveChatId, planPath) pair so different chats can be promoted
+  // independently.
+  const widgetPanel = useWidgetPanel("plan", {
+    kind: "plan",
+    data: { chatId: effectiveChatId, planPath: planPath ?? "" },
+  })
 
   // Expanded/collapsed state
   const [isExpanded, setIsExpanded] = useState(false)
@@ -136,6 +147,13 @@ export const PlanWidget = memo(function PlanWidget({
     return null
   }
 
+  // Widget is promoted to a dockview panel — show stub instead of summary.
+  if (widgetPanel.isOpen) {
+    return (
+      <PromotedToPanelStub label="Plan" onReturnToSummary={widgetPanel.closePanel} />
+    )
+  }
+
   return (
     <div className="mx-2 mb-2">
       <div className="rounded-lg border border-border/50 overflow-hidden">
@@ -151,7 +169,13 @@ export const PlanWidget = memo(function PlanWidget({
               size="sm"
               onClick={(e) => {
                 e.stopPropagation()
-                onExpandPlan?.()
+                // Prefer dockview panel when the dock is mounted; fall back to
+                // the legacy plan sidebar that ChatView still owns.
+                if (widgetPanel.available && planPath) {
+                  widgetPanel.openAsPanel()
+                } else {
+                  onExpandPlan?.()
+                }
               }}
               className="h-5 px-1.5 text-[10px] text-muted-foreground hover:text-foreground"
             >
