@@ -56,7 +56,7 @@ interface TerminalTabProps {
 }
 
 const TerminalTab = memo(
-  forwardRef<HTMLButtonElement, TerminalTabProps>(function TerminalTab(
+  forwardRef<HTMLDivElement, TerminalTabProps>(function TerminalTab(
     {
       terminal,
       isActive,
@@ -172,10 +172,18 @@ const TerminalTab = memo(
     return (
       <ContextMenu>
         <ContextMenuTrigger asChild>
-          <button
+          <div
             ref={ref}
+            role="button"
+            tabIndex={0}
             onClick={handleClick}
             onDoubleClick={handleDoubleClick}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault()
+                handleClick(e as unknown as React.MouseEvent)
+              }
+            }}
             className={cn(
               "group relative flex items-center rounded-md transition-colors h-6 flex-shrink-0 select-none",
               small ? "text-xs" : "text-sm",
@@ -252,7 +260,7 @@ const TerminalTab = memo(
                 </button>
               </div>
             )}
-          </button>
+          </div>
         </ContextMenuTrigger>
         <ContextMenuContent className="w-48">
           <ContextMenuItem onClick={onStartRename}>
@@ -312,7 +320,7 @@ export const TerminalTabs = memo(function TerminalTabs({
   onRenameTerminal,
 }: TerminalTabsProps) {
   const tabsContainerRef = useRef<HTMLDivElement>(null)
-  const tabRefs = useRef<Map<string, HTMLButtonElement>>(new Map())
+  const tabRefs = useRef<Map<string, HTMLDivElement>>(new Map())
   const textRefs = useRef<Map<string, HTMLSpanElement>>(new Map())
   const [truncatedTabs, setTruncatedTabs] = useState<Set<string>>(new Set())
   const [showLeftGradient, setShowLeftGradient] = useState(false)
