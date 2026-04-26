@@ -37,7 +37,7 @@ export function PlusMenu() {
 
   // Worktree path is needed for the terminal panel's cwd. Pulled lazily —
   // null when no chat selected or remote-only chat.
-  const { data: chat } = trpc.chats.getById.useQuery(
+  const { data: chat } = trpc.chats.get.useQuery(
     { id: chatId ?? "" },
     { enabled: !!chatId },
   )
