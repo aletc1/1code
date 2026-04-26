@@ -139,7 +139,7 @@ export function ChatTabArchiveHost() {
           <span className="font-medium text-foreground">
             {pendingArchive?.name ?? "this chat"}
           </span>
-          ? You can restore it from history later.
+          ?
         </AlertDialogDescription>
         <AlertDialogFooter>
           <AlertDialogCancel onClick={handleCancel}>Cancel</AlertDialogCancel>
