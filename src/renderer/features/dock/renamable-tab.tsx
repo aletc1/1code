@@ -71,12 +71,15 @@ export function RenamableTab(props: IDockviewPanelHeaderProps) {
   }, [editing, title])
 
   const kind = panelKind(api.id)
-  // No more "disable close on the last chat tab" — the close X now routes
-  // chat tabs through the archive flow ([chat-tab-archive.tsx]) which shows
-  // a confirm dialog when it's the last chat and archives the workspace.
-  // Other panel kinds keep their always-enabled close.
-  void chatPanelCount
-  const closeDisabled = false
+  // Disable the close X on the last chat tab — there's no useful "close
+  // this and stay on something" state to land in. If the user wants to
+  // truly archive the last chat (and the whole workspace with it), they
+  // do it from the chats list rail. The archive flow in
+  // [chat-tab-archive.tsx] is still wired up as a safeguard: if a click
+  // somehow fires (keyboard, programmatic, edge case), it routes to the
+  // workspace archive confirmation dialog so we never silently lose data.
+  const isLastChat = kind === "chat" && chatPanelCount <= 1
+  const closeDisabled = isLastChat
 
   const startEdit = () => {
     if (!kind) return
@@ -118,21 +121,33 @@ export function RenamableTab(props: IDockviewPanelHeaderProps) {
       )}
       <button
         type="button"
-        aria-label="Close tab"
+        aria-label={closeDisabled ? "Cannot close last chat" : "Close tab"}
+        title={
+          closeDisabled
+            ? "Use the chats list to archive this workspace"
+            : undefined
+        }
+        disabled={closeDisabled}
         onClick={(e) => {
           e.stopPropagation()
-          // Chat tabs go through the archive flow — last chat shows the
-          // confirm dialog and archives the workspace; other chat tabs
-          // are silently dropped from openSubChatIds. Non-chat panels
-          // (terminal / file / plan / diff / search / files-tree) close
-          // immediately like before.
+          // Chat tabs go through the archive flow — last chat would show
+          // the workspace archive confirm dialog (safeguard) and other
+          // chat tabs are silently dropped from openSubChatIds. Non-chat
+          // panels (terminal / file / plan / diff / search / files-tree)
+          // close immediately like before.
+          if (closeDisabled) return
           if (kind === "chat") {
             requestArchiveChatTab(api.id)
             return
           }
           api.close()
         }}
-        className="opacity-50 hover:opacity-100 hover:bg-foreground/10 rounded flex items-center justify-center transition-opacity"
+        className={cn(
+          "rounded flex items-center justify-center transition-opacity",
+          closeDisabled
+            ? "opacity-20 cursor-not-allowed"
+            : "opacity-50 hover:opacity-100 hover:bg-foreground/10",
+        )}
         style={{ width: 14, height: 14 }}
       >
         <X className="h-3 w-3" />
