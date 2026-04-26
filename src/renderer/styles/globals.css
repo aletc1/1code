@@ -394,31 +394,6 @@
   background: hsl(var(--primary));
 }
 
-/* Hide the tab itself when a group has a single panel — the lone "Workspace"
- * tab is just clutter, and visually competes with the sidebars' own headers
- * at the same Y. Keep the right-side header actions container visible so
- * Chat / Terminal / [+] stay reachable. The strip also collapses to a
- * smaller height so the area doesn't read as a heavy bar. */
-.dv-groupview:not(:has(.dv-tabs-container > .dv-tab + .dv-tab))
-  .dv-tabs-container,
-.dv-groupview:not(:has(.dv-tabs-container > .dv-tab + .dv-tab))
-  .dv-pre-actions-container,
-.dv-groupview:not(:has(.dv-tabs-container > .dv-tab + .dv-tab))
-  .dv-left-actions-container {
-  display: none;
-}
-.dv-groupview:not(:has(.dv-tabs-container > .dv-tab + .dv-tab))
-  > .dv-tabs-and-actions-container {
-  /* Same height as a sidebar header so the right-side actions (Chat / Terminal
-   * / [+]) align with the left/right sidebar header buttons. The 0.5px border
-   * matches the sidebar separators. */
-  height: 40px;
-  min-height: 40px;
-  background: transparent;
-  border-bottom: 0.5px solid hsl(var(--border));
-  justify-content: flex-end;
-}
-
 /* The dockview tab strip lives where the original 32px drag region used to
  * be — make its empty space draggable so the user can move the window from
  * the gap between tabs and the right-side actions. The actions container
