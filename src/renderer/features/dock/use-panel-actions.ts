@@ -1,9 +1,11 @@
 import { useCallback } from "react"
 import { useAtomValue, useSetAtom } from "jotai"
+import { toast } from "sonner"
 import {
   selectedAgentChatIdAtom,
   currentPlanPathAtomFamily,
 } from "../agents/atoms"
+import { defaultAgentModeAtom } from "../../lib/atoms"
 import { useAgentSubChatStore } from "../agents/stores/sub-chat-store"
 import {
   terminalsAtom,
@@ -24,14 +26,14 @@ import type { TerminalInstance } from "../terminal/types"
 export interface PanelActions {
   available: boolean
   // Action availability
-  canFocusChat: boolean
+  canNewSubChat: boolean
   canOpenTerminal: boolean
   canOpenPlan: boolean
   canOpenDiff: boolean
   canOpenSearch: boolean
   canOpenFilesTree: boolean
   // Action triggers
-  focusChat: () => void
+  newSubChat: () => void
   openTerminal: () => void
   openPlan: () => void
   openDiff: () => void
@@ -66,12 +68,64 @@ export function usePanelActions(): PanelActions {
   const setTerminals = useSetAtom(terminalsAtom)
   const setActiveTerminalIds = useSetAtom(activeTerminalIdAtom)
   const allTerminals = useAtomValue(terminalsAtom)
+  const defaultMode = useAtomValue(defaultAgentModeAtom)
+  const utils = trpc.useUtils()
+  const createSubChat = trpc.chats.createSubChat.useMutation()
 
-  const focusChat = useCallback(() => {
-    if (!dockApi) return
-    const main = dockApi.getPanel("main")
-    if (main) main.api.setActive()
-  }, [dockApi])
+  const newSubChat = useCallback(() => {
+    if (!chatId) return
+    const newId = crypto.randomUUID()
+    // Optimistically add to the chat's sub-chats so workspace ownership
+    // checks (validSubChatIds, tabsToRender) recognize it instantly. The
+    // optimistic name is "New Chat" — we don't pass `name` to trpc so the
+    // DB column stays NULL and the app-quit cleanup can recognize a
+    // never-named sub-chat.
+    utils.agents.getAgentChat.setData(
+      { chatId } as { chatId: string },
+      (old: any) => {
+        if (!old) return old
+        return {
+          ...old,
+          subChats: [
+            ...(old.subChats || []),
+            {
+              id: newId,
+              name: "New Chat",
+              mode: defaultMode,
+              created_at: new Date().toISOString(),
+              updated_at: new Date().toISOString(),
+              messages: null,
+              stream_id: null,
+            },
+          ],
+        }
+      },
+    )
+    // Wire it into the store so ChatPanelSync opens a `chat:` panel.
+    const store = useAgentSubChatStore.getState()
+    store.addToOpenSubChats(newId)
+    store.setActiveSubChat(newId)
+    // Persist to DB in the background; roll back on error.
+    createSubChat
+      .mutateAsync({ id: newId, chatId, mode: defaultMode })
+      .catch((err) => {
+        console.error("[newSubChat] Failed to persist:", err)
+        utils.agents.getAgentChat.setData(
+          { chatId } as { chatId: string },
+          (old: any) => {
+            if (!old) return old
+            return {
+              ...old,
+              subChats: (old.subChats || []).filter(
+                (sc: { id: string }) => sc.id !== newId,
+              ),
+            }
+          },
+        )
+        useAgentSubChatStore.getState().removeFromOpenSubChats(newId)
+        toast.error("Failed to create chat")
+      })
+  }, [chatId, defaultMode, utils, createSubChat])
 
   const openTerminal = useCallback(() => {
     if (!dockApi || !chatId || !worktreePath) return
@@ -135,13 +189,13 @@ export function usePanelActions(): PanelActions {
 
   return {
     available: !!dockApi,
-    canFocusChat: !!dockApi,
+    canNewSubChat: !!chatId && !!dockApi,
     canOpenTerminal: !!chatId && !!worktreePath && !!dockApi,
     canOpenPlan: !!chatId && !!planPath && !!dockApi,
     canOpenDiff: !!chatId && !!dockApi,
     canOpenSearch: !!projectId && !!dockApi,
     canOpenFilesTree: !!projectId && !!dockApi,
-    focusChat,
+    newSubChat,
     openTerminal,
     openPlan,
     openDiff,

@@ -52,11 +52,11 @@ export function DockHeaderActions(_props: IDockviewHeaderActionsProps) {
       }}
     >
       <HeaderIconButton
-        tooltip="Show chat"
-        ariaLabel="Show chat"
+        tooltip="New chat"
+        ariaLabel="New chat"
         icon={<MessageSquare className="h-4 w-4" />}
-        disabled={!actions.canFocusChat}
-        onClick={actions.focusChat}
+        disabled={!actions.canNewSubChat}
+        onClick={actions.newSubChat}
       />
       <HeaderIconButton
         tooltip="New terminal"
