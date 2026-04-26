@@ -1,6 +1,13 @@
-import { DockviewReact, type DockviewReadyEvent, type DockviewApi } from "dockview-react"
-import { useCallback, useState } from "react"
+import {
+  DockviewReact,
+  themeLight,
+  themeDark,
+  type DockviewReadyEvent,
+  type DockviewApi,
+} from "dockview-react"
+import { useCallback, useMemo, useState } from "react"
 import { useSetAtom } from "jotai"
+import { useTheme } from "next-themes"
 import { dockviewComponents } from "./panel-registry"
 import { dockReadyAtom, widgetPanelMapAtom } from "./atoms"
 import { DockHeaderActions } from "./dock-header-actions"
@@ -18,6 +25,17 @@ export function DockShell({ onApiReady, className }: DockShellProps) {
   const [, setApi] = useState<DockviewApi | null>(null)
   const setReady = useSetAtom(dockReadyAtom)
   const setMap = useSetAtom(widgetPanelMapAtom)
+
+  // Without an explicit theme prop, dockview defaults to themeAbyss — its
+  // .dockview-theme-abyss class is more specific than my html-level theme
+  // class, so abyss's #000c18 group bg won every override. Pick the matching
+  // light/dark theme up-front so dockview applies the className my CSS
+  // overrides target.
+  const { resolvedTheme } = useTheme()
+  const dockviewTheme = useMemo(
+    () => (resolvedTheme === "dark" ? themeDark : themeLight),
+    [resolvedTheme],
+  )
 
   const handleReady = useCallback(
     (event: DockviewReadyEvent) => {
@@ -55,6 +73,7 @@ export function DockShell({ onApiReady, className }: DockShellProps) {
       onReady={handleReady}
       rightHeaderActionsComponent={DockHeaderActions}
       singleTabMode="fullwidth"
+      theme={dockviewTheme}
     />
   )
 }
