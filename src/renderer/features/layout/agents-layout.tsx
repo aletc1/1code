@@ -428,7 +428,7 @@ export function AgentsLayout() {
       const left = api.getPanel("left-rail")
       if (left) {
         left.api.setSize({ width: initialWidth })
-        api.setVisible(left, !isMobile && sidebarOpen)
+        left.api.setVisible(!isMobile && sidebarOpen)
       }
       // Persist width on layout change
       api.onDidLayoutChange(() => {
@@ -453,7 +453,7 @@ export function AgentsLayout() {
     if (!left) return
     const shouldShow = !isMobile && sidebarOpen
     if (left.api.isVisible !== shouldShow) {
-      api.setVisible(left, shouldShow)
+      left.api.setVisible(shouldShow)
     }
   }, [isMobile, sidebarOpen])
 
