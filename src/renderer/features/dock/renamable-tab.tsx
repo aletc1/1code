@@ -22,11 +22,14 @@ import { cn } from "../../lib/utils"
  * use the read-only path — double-click is a no-op.
  */
 export function RenamableTab(props: IDockviewPanelHeaderProps) {
-  const { api } = props
+  const { api, containerApi } = props
   const [title, setTitle] = useState(api.title ?? "")
   const [isActive, setIsActive] = useState(api.isActive)
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState(title)
+  const [chatPanelCount, setChatPanelCount] = useState(() =>
+    countChatPanels(containerApi.panels),
+  )
   const inputRef = useRef<HTMLInputElement>(null)
 
   // Keep local title in sync with whatever the panel pushes via setTitle.
@@ -42,6 +45,20 @@ export function RenamableTab(props: IDockviewPanelHeaderProps) {
     return () => sub.dispose()
   }, [api])
 
+  // Track the chat-panel count so the close X on the *last* chat tab can be
+  // disabled — there must always be at least one chat open while a workspace
+  // is selected.
+  useEffect(() => {
+    const recount = () => setChatPanelCount(countChatPanels(containerApi.panels))
+    recount()
+    const subAdd = containerApi.onDidAddPanel(recount)
+    const subRem = containerApi.onDidRemovePanel(recount)
+    return () => {
+      subAdd.dispose()
+      subRem.dispose()
+    }
+  }, [containerApi])
+
   useEffect(() => {
     if (editing) {
       setDraft(title)
@@ -53,6 +70,8 @@ export function RenamableTab(props: IDockviewPanelHeaderProps) {
   }, [editing, title])
 
   const kind = panelKind(api.id)
+  const isLastChat = kind === "chat" && chatPanelCount <= 1
+  const closeDisabled = isLastChat
 
   const startEdit = () => {
     if (!kind) return
@@ -94,18 +113,32 @@ export function RenamableTab(props: IDockviewPanelHeaderProps) {
       )}
       <button
         type="button"
-        aria-label="Close tab"
+        aria-label={closeDisabled ? "Cannot close last chat" : "Close tab"}
+        title={closeDisabled ? "At least one chat must stay open" : undefined}
+        disabled={closeDisabled}
         onClick={(e) => {
           e.stopPropagation()
+          if (closeDisabled) return
           api.close()
         }}
-        className="opacity-50 hover:opacity-100 hover:bg-foreground/10 rounded transition-opacity flex items-center justify-center"
+        className={cn(
+          "rounded flex items-center justify-center transition-opacity",
+          closeDisabled
+            ? "opacity-20 cursor-not-allowed"
+            : "opacity-50 hover:opacity-100 hover:bg-foreground/10",
+        )}
         style={{ width: 14, height: 14 }}
       >
         <X className="h-3 w-3" />
       </button>
     </div>
   )
+}
+
+function countChatPanels(panels: { id: string }[]): number {
+  let n = 0
+  for (const p of panels) if (p.id.startsWith("chat:")) n++
+  return n
 }
 
 /**
