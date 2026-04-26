@@ -1085,17 +1085,14 @@ export function AgentsContent({
           className="flex-1 min-w-0 overflow-hidden"
           style={{ minWidth: "350px" }}
         >
-          {desktopView === "settings" ? (
-            <SettingsContent />
-          ) : desktopView === "usage" ? (
-            <UsageContent />
-          ) : betaAutomationsEnabled && desktopView === "automations" ? (
-            <AutomationsView />
-          ) : betaAutomationsEnabled && desktopView === "automations-detail" ? (
-            <AutomationsDetailView />
-          ) : betaAutomationsEnabled && desktopView === "inbox" ? (
-            <InboxView />
-          ) : selectedChatId ? (
+          {/* System-wide views (settings / usage / automations / inbox /
+              kanban / new-workspace) are not rendered here — they live as
+              an overlay on the layout shell so they replace the workspace
+              surface entirely instead of nesting inside a dockview tab.
+              See [agents-layout.tsx]'s CenterRailPanel. The no-chat fall-
+              through stays null so the overlay isn't duplicate-mounted
+              underneath. */}
+          {selectedChatId ? (
             <div className="h-full flex flex-col relative overflow-hidden">
               <ChatView
                 key={`${chatSourceMode}-${selectedChatId}-${subChatIdOverride ?? "active"}`}
@@ -1107,17 +1104,7 @@ export function AgentsContent({
                 subChatIdOverride={subChatIdOverride}
               />
             </div>
-          ) : selectedDraftId || showNewChatForm ? (
-            <div className="h-full flex flex-col relative overflow-hidden">
-              <NewChatForm key={`new-chat-${newChatFormKeyRef.current}`} />
-            </div>
-          ) : betaKanbanEnabled ? (
-            <KanbanView />
-          ) : (
-            <div className="h-full flex flex-col relative overflow-hidden">
-              <NewChatForm key={`new-chat-${newChatFormKeyRef.current}`} />
-            </div>
-          )}
+          ) : null}
         </div>
       </div>
       {/* DragOverlay + DndContext removed (see note above the return). */}

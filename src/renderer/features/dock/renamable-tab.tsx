@@ -42,6 +42,9 @@ export function RenamableTab(props: IDockviewPanelHeaderProps) {
   const [chatPanelCount, setChatPanelCount] = useState(() =>
     countChatPanels(containerApi.panels),
   )
+  const [totalPanelCount, setTotalPanelCount] = useState(
+    () => containerApi.panels.length,
+  )
   const inputRef = useRef<HTMLInputElement>(null)
 
   // Keep local title in sync with whatever the panel pushes via setTitle.
@@ -59,9 +62,14 @@ export function RenamableTab(props: IDockviewPanelHeaderProps) {
 
   // Track the chat-panel count so the close X on the *last* chat tab can be
   // disabled — there must always be at least one chat open while a workspace
-  // is selected.
+  // is selected. Also track the total panel count so the close X on the
+  // *only* tab (any kind) is disabled — closing the last panel would leave
+  // dockview empty.
   useEffect(() => {
-    const recount = () => setChatPanelCount(countChatPanels(containerApi.panels))
+    const recount = () => {
+      setChatPanelCount(countChatPanels(containerApi.panels))
+      setTotalPanelCount(containerApi.panels.length)
+    }
     recount()
     const subAdd = containerApi.onDidAddPanel(recount)
     const subRem = containerApi.onDidRemovePanel(recount)
@@ -82,15 +90,16 @@ export function RenamableTab(props: IDockviewPanelHeaderProps) {
   }, [editing, title])
 
   const kind = panelKind(api.id)
-  // Disable the close X on the last chat tab — there's no useful "close
-  // this and stay on something" state to land in. If the user wants to
-  // truly archive the last chat (and the whole workspace with it), they
-  // do it from the chats list rail. The archive flow in
-  // [chat-tab-archive.tsx] is still wired up as a safeguard: if a click
-  // somehow fires (keyboard, programmatic, edge case), it routes to the
-  // workspace archive confirmation dialog so we never silently lose data.
+  // Disable the close X in two cases:
+  // 1. The last chat tab — there's no useful "close this and stay on
+  //    something" state to land in. The archive flow in
+  //    [chat-tab-archive.tsx] stays wired as a safeguard for keyboard /
+  //    programmatic clicks.
+  // 2. The only tab in dockview, of any kind. Closing it would leave the
+  //    center cell empty.
   const isLastChat = kind === "chat" && chatPanelCount <= 1
-  const closeDisabled = isLastChat
+  const isOnlyPanel = totalPanelCount <= 1
+  const closeDisabled = isLastChat || isOnlyPanel
 
   const startEdit = () => {
     if (!kind) return
@@ -133,11 +142,19 @@ export function RenamableTab(props: IDockviewPanelHeaderProps) {
       )}
       <button
         type="button"
-        aria-label={closeDisabled ? "Cannot close last chat" : "Close tab"}
-        title={
+        aria-label={
           closeDisabled
+            ? isLastChat
+              ? "Cannot close last chat"
+              : "Cannot close last tab"
+            : "Close tab"
+        }
+        title={
+          isLastChat
             ? "Use the chats list to archive this workspace"
-            : undefined
+            : isOnlyPanel
+              ? "At least one tab must stay open"
+              : undefined
         }
         disabled={closeDisabled}
         onClick={(e) => {

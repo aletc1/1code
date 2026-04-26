@@ -27,6 +27,7 @@ import {
   anthropicOnboardingCompletedAtom,
   customHotkeysAtom,
   betaKanbanEnabledAtom,
+  betaAutomationsEnabledAtom,
 } from "../../lib/atoms"
 import { selectedAgentChatIdAtom, selectedProjectAtom, selectedDraftIdAtom, showNewChatFormAtom, desktopViewAtom, fileSearchDialogOpenAtom } from "../agents/atoms"
 import { trpc } from "../../lib/trpc"
@@ -40,6 +41,15 @@ import { UpdateBanner } from "../../components/update-banner"
 import { WindowsTitleBar } from "../../components/windows-title-bar"
 import { DetailsRail } from "./details-rail"
 import { SettingsSidebar } from "../settings/settings-sidebar"
+import { SettingsContent } from "../settings/settings-content"
+import { UsageContent } from "../usage/usage-content"
+import { KanbanView } from "../kanban"
+import {
+  AutomationsView,
+  AutomationsDetailView,
+  InboxView,
+} from "../automations"
+import { NewChatForm } from "../agents/main/new-chat-form"
 import {
   detailsSidebarOpenAtom,
   detailsSidebarWidthAtom,
@@ -140,8 +150,50 @@ function LeftRailPanel(_props: IGridviewPanelProps) {
   )
 }
 
+/**
+ * Resolves which system-wide view (if any) should overlay the workspace
+ * shell. None of these views belong to a workspace, so they shouldn't
+ * render inside a dockview tab — instead they cover the whole center cell.
+ *
+ * - `settings` / `usage` / `automations` / `automations-detail` / `inbox`
+ *   are explicitly chosen via `desktopViewAtom`.
+ * - `kanban` is implicit when the beta flag is on and no chat / draft /
+ *   new-workspace flow is active.
+ * - `new-workspace` covers every "no chat selected" state that isn't a
+ *   different system view — that's the form the user sees when they hit
+ *   "New Workspace" or first launch the app.
+ */
+function useEffectiveSystemView():
+  | "settings"
+  | "usage"
+  | "automations"
+  | "automations-detail"
+  | "inbox"
+  | "kanban"
+  | "new-workspace"
+  | null {
+  const desktopView = useAtomValue(desktopViewAtom)
+  const betaKanbanEnabled = useAtomValue(betaKanbanEnabledAtom)
+  const selectedChatId = useAtomValue(selectedAgentChatIdAtom)
+  const selectedDraftId = useAtomValue(selectedDraftIdAtom)
+  const showNewChatForm = useAtomValue(showNewChatFormAtom)
+
+  if (desktopView !== null) return desktopView
+  if (selectedChatId) return null
+  if (
+    betaKanbanEnabled &&
+    !selectedDraftId &&
+    !showNewChatForm
+  ) {
+    return "kanban"
+  }
+  return "new-workspace"
+}
+
 function CenterRailPanel(_props: IGridviewPanelProps) {
   const { setDockApi, layoutSnapshot, scheduleLayoutSave } = useShellContext()
+  const systemView = useEffectiveSystemView()
+  const betaAutomationsEnabled = useAtomValue(betaAutomationsEnabledAtom)
 
   const handleDockReady = useCallback(
     (api: DockviewApi) => {
@@ -176,7 +228,30 @@ function CenterRailPanel(_props: IGridviewPanelProps) {
 
   return (
     <div className="relative h-full w-full overflow-hidden flex flex-col min-w-0">
+      {/* DockShell stays mounted under the overlay so chat tabs / terminal
+          PTYs / dock layout state survive a settings/usage detour. The
+          overlay is opaque (bg-background) and stops pointer events from
+          reaching dockview while a system view is active. */}
       <DockShell onApiReady={handleDockReady} className="h-full w-full" />
+      {systemView !== null && (
+        <div className="absolute inset-0 z-10 bg-background overflow-hidden">
+          {systemView === "settings" && <SettingsContent />}
+          {systemView === "usage" && <UsageContent />}
+          {systemView === "kanban" && <KanbanView />}
+          {systemView === "new-workspace" && (
+            <div className="h-full flex flex-col relative overflow-hidden">
+              <NewChatForm />
+            </div>
+          )}
+          {betaAutomationsEnabled && systemView === "automations" && (
+            <AutomationsView />
+          )}
+          {betaAutomationsEnabled && systemView === "automations-detail" && (
+            <AutomationsDetailView />
+          )}
+          {betaAutomationsEnabled && systemView === "inbox" && <InboxView />}
+        </div>
+      )}
     </div>
   )
 }
@@ -520,7 +595,11 @@ export function AgentsLayout() {
         const right = api.getPanel("right-rail")
         if (right) {
           right.api.setSize({ width: initialRightWidth })
-          right.api.setVisible(detailsOpen)
+          // Hide the rail unconditionally when there's no chat selected —
+          // its widgets ("Select a chat to see details" otherwise) are all
+          // workspace-scoped, so showing them on the New Workspace / Settings
+          // / Kanban surfaces is just empty noise.
+          right.api.setVisible(detailsOpen && !!selectedChatId)
         }
       }
 
@@ -557,16 +636,21 @@ export function AgentsLayout() {
     }
   }, [isMobile, sidebarOpen])
 
-  // Sync details rail open state with the gridview right panel.
+  // Sync details rail open state with the gridview right panel. The rail
+  // is force-hidden when no chat is selected — its widgets only have
+  // meaning in a workspace, and the system-view overlay covers the whole
+  // center anyway. When `selectedChatId` becomes truthy again the rail
+  // restores to whatever the user last set via `detailsOpen`.
   useEffect(() => {
     const api = gridApiRef.current
     if (!api) return
     const right = api.getPanel("right-rail")
     if (!right) return
-    if (right.api.isVisible !== detailsOpen) {
-      right.api.setVisible(detailsOpen)
+    const shouldShow = detailsOpen && !!selectedChatId
+    if (right.api.isVisible !== shouldShow) {
+      right.api.setVisible(shouldShow)
     }
-  }, [detailsOpen])
+  }, [detailsOpen, selectedChatId])
 
   // (DockviewApi state is declared earlier so the layout saver can capture it.)
 
