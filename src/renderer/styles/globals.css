@@ -391,3 +391,25 @@
   height: 2px;
   background: hsl(var(--primary));
 }
+
+/* Hide the tab itself when a group has a single panel — the lone "Workspace"
+ * tab is just clutter, and visually competes with the sidebars' own headers
+ * at the same Y. Keep the right-side header actions container visible so
+ * Chat / Terminal / [+] stay reachable. The strip also collapses to a
+ * smaller height so the area doesn't read as a heavy bar. */
+.dv-groupview:not(:has(.dv-tabs-container > .dv-tab + .dv-tab))
+  .dv-tabs-container,
+.dv-groupview:not(:has(.dv-tabs-container > .dv-tab + .dv-tab))
+  .dv-pre-actions-container,
+.dv-groupview:not(:has(.dv-tabs-container > .dv-tab + .dv-tab))
+  .dv-left-actions-container {
+  display: none;
+}
+.dv-groupview:not(:has(.dv-tabs-container > .dv-tab + .dv-tab))
+  > .dv-tabs-and-actions-container {
+  height: 28px;
+  min-height: 28px;
+  background: transparent;
+  border-bottom: none;
+  justify-content: flex-end;
+}
