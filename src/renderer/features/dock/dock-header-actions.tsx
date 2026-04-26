@@ -8,6 +8,7 @@ import {
   MessageSquare,
   Terminal as TerminalIcon,
 } from "lucide-react"
+import { useAtom } from "jotai"
 import type { IDockviewHeaderActionsProps } from "dockview-react"
 import { Button } from "../../components/ui/button"
 import {
@@ -22,6 +23,10 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "../../components/ui/tooltip"
+import { Kbd } from "../../components/ui/kbd"
+import { IconOpenSidebarRight } from "../../components/ui/icons"
+import { useResolvedHotkeyDisplay } from "../../lib/hotkeys"
+import { detailsSidebarOpenAtom } from "../details-sidebar/atoms"
 import { usePanelActions } from "./use-panel-actions"
 
 /**
@@ -35,6 +40,8 @@ import { usePanelActions } from "./use-panel-actions"
  */
 export function DockHeaderActions(_props: IDockviewHeaderActionsProps) {
   const actions = usePanelActions()
+  const [isDetailsOpen, setIsDetailsOpen] = useAtom(detailsSidebarOpenAtom)
+  const toggleDetailsHotkey = useResolvedHotkeyDisplay("toggle-details")
 
   return (
     <div
@@ -111,6 +118,24 @@ export function DockHeaderActions(_props: IDockviewHeaderActionsProps) {
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Button
+            variant="ghost"
+            size="icon"
+            aria-label={isDetailsOpen ? "Hide details" : "View details"}
+            onClick={() => setIsDetailsOpen(!isDetailsOpen)}
+            data-active={isDetailsOpen}
+            className="h-6 w-6 p-0 hover:bg-foreground/10 transition-[background-color,transform] duration-150 ease-out active:scale-[0.97] flex-shrink-0 rounded-md text-muted-foreground hover:text-foreground data-[active=true]:bg-foreground/10 data-[active=true]:text-foreground"
+          >
+            <IconOpenSidebarRight className="h-4 w-4" />
+          </Button>
+        </TooltipTrigger>
+        <TooltipContent side="bottom">
+          {isDetailsOpen ? "Hide details" : "View details"}
+          {toggleDetailsHotkey && <Kbd>{toggleDetailsHotkey}</Kbd>}
+        </TooltipContent>
+      </Tooltip>
     </div>
   )
 }
