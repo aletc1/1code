@@ -38,7 +38,12 @@ import { TooltipProvider } from "../../components/ui/tooltip"
 import { AgentsSidebar } from "../sidebar/agents-sidebar"
 import { UpdateBanner } from "../../components/update-banner"
 import { TopBar } from "./top-bar"
+import { DetailsRail } from "./details-rail"
 import { SettingsSidebar } from "../settings/settings-sidebar"
+import {
+  detailsSidebarOpenAtom,
+  detailsSidebarWidthAtom,
+} from "../details-sidebar/atoms"
 import {
   DockShell,
   DockProvider,
@@ -60,6 +65,9 @@ import { QueueProcessor } from "../agents/components/queue-processor"
 const SIDEBAR_MIN_WIDTH = 160
 const SIDEBAR_MAX_WIDTH = 600
 const SIDEBAR_DEFAULT_WIDTH = 240
+const DETAILS_RAIL_MIN_WIDTH = 280
+const DETAILS_RAIL_MAX_WIDTH = 700
+const DETAILS_RAIL_DEFAULT_WIDTH = 460
 
 // ============================================================================
 // Shell context — bridges parent state into gridview panel renderers
@@ -172,6 +180,7 @@ function CenterRailPanel(_props: IGridviewPanelProps) {
 const GRID_COMPONENTS: Record<string, React.FunctionComponent<IGridviewPanelProps>> = {
   "left-rail": LeftRailPanel,
   "center": CenterRailPanel,
+  "right-rail": DetailsRail,
 }
 
 // ============================================================================
@@ -223,6 +232,8 @@ export function AgentsLayout() {
 
   const [sidebarOpen, setSidebarOpen] = useAtom(agentsSidebarOpenAtom)
   const [sidebarWidth, setSidebarWidth] = useAtom(agentsSidebarWidthAtom)
+  const detailsOpen = useAtomValue(detailsSidebarOpenAtom)
+  const [detailsWidth, setDetailsWidth] = useAtom(detailsSidebarWidthAtom)
   const setSettingsActiveTab = useSetAtom(agentsSettingsDialogActiveTabAtom)
   const setSettingsDialogOpen = useSetAtom(agentsSettingsDialogOpenAtom)
   const desktopView = useAtomValue(desktopViewAtom)
@@ -454,10 +465,14 @@ export function AgentsLayout() {
       const { shell: restored } = tryRestore(api, null, layoutSnapshot)
 
       if (!restored) {
-        // First-run / unrestorable: build the default 2-cell layout.
-        const initialWidth = Math.min(
+        // First-run / unrestorable: build the default 3-cell layout.
+        const initialLeftWidth = Math.min(
           Math.max(sidebarWidth ?? SIDEBAR_DEFAULT_WIDTH, SIDEBAR_MIN_WIDTH),
           SIDEBAR_MAX_WIDTH,
+        )
+        const initialRightWidth = Math.min(
+          Math.max(detailsWidth ?? DETAILS_RAIL_DEFAULT_WIDTH, DETAILS_RAIL_MIN_WIDTH),
+          DETAILS_RAIL_MAX_WIDTH,
         )
         api.addPanel({
           id: "left-rail",
@@ -471,19 +486,36 @@ export function AgentsLayout() {
           priority: LayoutPriority.High,
           position: { referencePanel: "left-rail", direction: "right" },
         })
+        api.addPanel({
+          id: "right-rail",
+          component: "right-rail",
+          minimumWidth: DETAILS_RAIL_MIN_WIDTH,
+          maximumWidth: DETAILS_RAIL_MAX_WIDTH,
+          position: { referencePanel: "center", direction: "right" },
+        })
         const left = api.getPanel("left-rail")
         if (left) {
-          left.api.setSize({ width: initialWidth })
+          left.api.setSize({ width: initialLeftWidth })
           left.api.setVisible(!isMobile && sidebarOpen)
+        }
+        const right = api.getPanel("right-rail")
+        if (right) {
+          right.api.setSize({ width: initialRightWidth })
+          right.api.setVisible(detailsOpen)
         }
       }
 
       // Persist width on layout change + schedule a snapshot save.
       api.onDidLayoutChange(() => {
-        const panel = api.getPanel("left-rail")
-        if (panel?.api.isVisible) {
-          const w = panel.api.width
+        const left = api.getPanel("left-rail")
+        if (left?.api.isVisible) {
+          const w = left.api.width
           if (w && w !== sidebarWidth) setSidebarWidth(w)
+        }
+        const right = api.getPanel("right-rail")
+        if (right?.api.isVisible) {
+          const w = right.api.width
+          if (w && w !== detailsWidth) setDetailsWidth(w)
         }
         scheduleLayoutSave()
       })
@@ -505,6 +537,17 @@ export function AgentsLayout() {
       left.api.setVisible(shouldShow)
     }
   }, [isMobile, sidebarOpen])
+
+  // Sync details rail open state with the gridview right panel.
+  useEffect(() => {
+    const api = gridApiRef.current
+    if (!api) return
+    const right = api.getPanel("right-rail")
+    if (!right) return
+    if (right.api.isVisible !== detailsOpen) {
+      right.api.setVisible(detailsOpen)
+    }
+  }, [detailsOpen])
 
   // (DockviewApi state is declared earlier so the layout saver can capture it.)
 

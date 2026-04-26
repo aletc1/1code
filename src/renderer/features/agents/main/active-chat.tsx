@@ -8343,47 +8343,8 @@ Make sure to preserve all functionality from both branches when resolving confli
           isDeleting={deleteWorkspaceMutation.isPending}
         />
 
-        {/* Unified Details Sidebar - combines all right sidebars into one (rightmost) */}
-        {/* Show for both local (worktreePath) and remote (sandboxId) chats */}
-        {isUnifiedSidebarEnabled && !isMobileFullscreen && (worktreePath || sandboxId) && (
-          <DetailsSidebar
-            chatId={chatId}
-            worktreePath={worktreePath}
-            planPath={currentPlanPath}
-            mode={currentMode}
-            onBuildPlan={handleApprovePlanFromSidebar}
-            planRefetchTrigger={planEditRefetchTrigger}
-            activeSubChatId={activeSubChatIdForPlan}
-            isPlanSidebarOpen={isPlanSidebarOpen && !!currentPlanPath}
-            isTerminalSidebarOpen={isTerminalSidebarOpen}
-            isDiffSidebarOpen={isDiffSidebarOpen}
-            diffDisplayMode={diffDisplayMode}
-            canOpenDiff={canOpenDiff}
-            setIsDiffSidebarOpen={setIsDiffSidebarOpen}
-            diffStats={diffStats}
-            parsedFileDiffs={parsedFileDiffs}
-            onCommit={worktreePath ? handleCommitChanges : undefined}
-            onCommitAndPush={worktreePath ? handleCommitAndPush : undefined}
-            isCommitting={isCommittingCombined}
-            gitStatus={gitStatus}
-            isGitStatusLoading={isGitStatusLoading}
-            currentBranch={branchData?.current}
-            onExpandTerminal={() => setIsTerminalSidebarOpen(true)}
-            onExpandPlan={() => setIsPlanSidebarOpen(true)}
-            onExpandDiff={() => setIsDiffSidebarOpen(true)}
-            onFileSelect={(filePath) => {
-              // Set the selected file path
-              setSelectedFilePath(filePath)
-              // Set filtered files to just this file
-              setFilteredDiffFiles([filePath])
-              // Open the diff sidebar
-              setIsDiffSidebarOpen(true)
-            }}
-            onOpenFile={setFileViewerPath}
-            remoteInfo={remoteInfo}
-            isRemoteChat={!!remoteInfo}
-          />
-        )}
+        {/* DetailsSidebar lifted out — now mounts in the gridview right rail
+            (DetailsRail), shared across all chat panels. */}
       </div>
 
       {/* Terminal Bottom Panel — renders below the main row when displayMode is "bottom" */}

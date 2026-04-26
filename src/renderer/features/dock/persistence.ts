@@ -1,14 +1,18 @@
 import type { DockviewApi, GridviewApi } from "dockview-react"
 
 export interface AgentsLayoutSnapshot {
-  version: 1
+  version: 2
   /** Result of gridApi.toJSON() — the outer 3-column shell. */
   shell: unknown | null
   /** Result of dockApi.toJSON() — the center-cell panel arrangement. */
   dock: unknown | null
 }
 
-const SCHEMA_VERSION = 1
+// v1 → v2: added the right-rail gridview cell (DetailsRail). Old snapshots
+// only have left + center cells, so loading them would miss the new rail.
+// Bumping the version invalidates v1 snapshots and falls back to the new
+// 3-cell defaults on first launch after the upgrade.
+const SCHEMA_VERSION = 2
 
 /**
  * Compute the storage key for the layout snapshot. Today this is a global
