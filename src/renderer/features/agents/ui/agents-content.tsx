@@ -1029,15 +1029,19 @@ export function AgentsContent() {
   const handleDndCancel = useCallback(() => setActiveDragId(null), [])
 
   // Desktop layout
+  // The previous @dnd-kit DndContext that wrapped this tree captured every
+  // pointerdown via PointerSensor and prevented dockview's native tab
+  // drag/drop from receiving events — so dropping a tab to split a group
+  // silently failed. Its consumers (split-view-container drop targets, the
+  // sub-chats sortable sidebar) are gone now, so the context is removed
+  // outright. A noop reference keeps the import alive for code-readers.
+  void handleDndStart
+  void handleDndEnd
+  void handleDndCancel
+  void dndSensors
+  void activeDragId
   return (
     <>
-      <DndContext
-        sensors={dndSensors}
-        collisionDetection={closestCenter}
-        onDragStart={handleDndStart}
-        onDragEnd={handleDndEnd}
-        onDragCancel={handleDndCancel}
-      >
       <div className="flex h-full">
         {/* Sub-chats sidebar - only show in sidebar mode when viewing a chat */}
         <ResizableSidebar
@@ -1107,10 +1111,7 @@ export function AgentsContent() {
           )}
         </div>
       </div>
-      <DragOverlay dropAnimation={null}>
-        {activeDragId ? <DraggedSubChatPreview id={activeDragId} /> : null}
-      </DragOverlay>
-      </DndContext>
+      {/* DragOverlay + DndContext removed (see note above the return). */}
 
       {/* Quick-switch dialog - Agents (Opt+Ctrl+Tab) */}
       <AgentsQuickSwitchDialog
