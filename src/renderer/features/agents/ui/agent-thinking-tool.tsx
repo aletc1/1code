@@ -1,7 +1,7 @@
 "use client"
 
 import { memo, useState, useEffect, useRef } from "react"
-import { ChevronRight } from "lucide-react"
+import { Brain, ChevronRight } from "lucide-react"
 import { cn } from "../../../lib/utils"
 import { ChatMarkdownRenderer } from "../../../components/chat-markdown-renderer"
 import { TextShimmer } from "../../../components/ui/text-shimmer"
@@ -101,6 +101,9 @@ export const AgentThinkingTool = memo(function AgentThinkingTool({
         onClick={() => setIsExpanded(!isExpanded)}
         className="group flex items-start gap-1.5 py-0.5 px-2 cursor-pointer"
       >
+        <div className="flex-shrink-0 flex items-start pt-[1px]">
+          <Brain className="w-3.5 h-3.5 text-muted-foreground/70" />
+        </div>
         <div className="flex-1 min-w-0 flex items-center gap-1">
           <div className="text-xs flex items-center gap-1.5 min-w-0">
             <span className="font-medium whitespace-nowrap flex-shrink-0">
@@ -153,7 +156,7 @@ export const AgentThinkingTool = memo(function AgentThinkingTool({
           <div
             ref={scrollRef}
             className={cn(
-              "px-2",
+              "pl-7 pr-2",
               isStreaming && "overflow-y-auto scrollbar-hide max-h-36",
             )}
           >

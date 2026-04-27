@@ -2,7 +2,7 @@
 
 import { memo, useState, useEffect, useRef } from "react"
 import { useAtomValue } from "jotai"
-import { ChevronRight } from "lucide-react"
+import { ChevronRight, FolderSearch } from "lucide-react"
 import { useFileOpen } from "../mentions"
 import { selectedProjectAtom } from "../atoms"
 import { AgentToolRegistry, getToolStatus } from "./agent-tool-registry"
@@ -75,6 +75,9 @@ export const AgentExploringGroup = memo(function AgentExploringGroup({
         onClick={() => setIsExpanded(!isExpanded)}
         className="group flex items-start gap-1.5 py-0.5 px-2 cursor-pointer"
       >
+        <div className="flex-shrink-0 flex items-start pt-[1px]">
+          <FolderSearch className="w-3.5 h-3.5 text-muted-foreground/70" />
+        </div>
         <div className="flex-1 min-w-0 flex items-center gap-1">
           <div className="text-xs flex items-center gap-1.5 min-w-0">
             <span className="font-medium whitespace-nowrap flex-shrink-0 text-muted-foreground">
@@ -112,7 +115,7 @@ export const AgentExploringGroup = memo(function AgentExploringGroup({
           <div
             ref={scrollRef}
             className={cn(
-              "space-y-1.5",
+              "space-y-1.5 ml-3 pl-3 border-l border-border/40",
               parts.length > MAX_VISIBLE_TOOLS &&
                 "overflow-y-auto scrollbar-hide",
             )}
@@ -128,7 +131,7 @@ export const AgentExploringGroup = memo(function AgentExploringGroup({
                 return (
                   <div
                     key={idx}
-                    className="text-xs text-muted-foreground py-0.5 px-2"
+                    className="text-xs text-muted-foreground py-0.5"
                   >
                     {part.type?.replace("tool-", "")}
                   </div>
@@ -147,6 +150,7 @@ export const AgentExploringGroup = memo(function AgentExploringGroup({
                   tooltipContent={meta.tooltipContent?.(part, projectPath)}
                   isPending={isPending}
                   isError={isError}
+                  isNested={true}
                   onClick={handleClick}
                 />
               )

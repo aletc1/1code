@@ -7,6 +7,7 @@ import {
   IconSpinner,
   ExpandIcon,
   CollapseIcon,
+  CustomTerminalIcon,
 } from "../../../components/ui/icons"
 import { TextShimmer } from "../../../components/ui/text-shimmer"
 import { getToolStatus } from "./agent-tool-registry"
@@ -107,6 +108,9 @@ export const AgentBashTool = memo(function AgentBashTool({
   if (isInputStreaming) {
     return (
       <div className="flex items-start gap-1.5 rounded-md py-0.5 px-2">
+        <div className="flex-shrink-0 flex items-start pt-[1px]">
+          <CustomTerminalIcon className="w-3.5 h-3.5 text-muted-foreground/70" />
+        </div>
         <div className="flex-1 min-w-0 flex items-center gap-1.5">
           <div className="text-xs text-muted-foreground flex items-center gap-1.5 min-w-0">
             <span className="font-medium whitespace-nowrap flex-shrink-0">
@@ -144,6 +148,7 @@ export const AgentBashTool = memo(function AgentBashTool({
           hasMoreOutput && !isPending && "cursor-pointer hover:bg-muted/50 transition-colors duration-150",
         )}
       >
+        <CustomTerminalIcon className="w-3.5 h-3.5 text-muted-foreground/70 flex-shrink-0 mr-1.5" />
         <span className="text-xs text-muted-foreground truncate flex-1 min-w-0">
           {isPending ? "Running command: " : "Ran command: "}
           {commandSummary}
