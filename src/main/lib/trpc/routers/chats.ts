@@ -1078,9 +1078,20 @@ export const chatsRouter = router({
     .input(z.object({ id: z.string() }))
     .mutation(({ input }) => {
       const db = getDatabase()
+      // Conservative match: keep any sub-chat the user invested effort
+      // in. A renamed-but-never-typed-in sub-chat must survive — only
+      // the truly-untouched (no name, no messages) rows are eligible.
+      // Mirrors the shutdown sweep in [main/index.ts]'s before-quit
+      // handler.
       return db
         .delete(subChats)
-        .where(and(eq(subChats.id, input.id), eq(subChats.messages, "[]")))
+        .where(
+          and(
+            eq(subChats.id, input.id),
+            eq(subChats.messages, "[]"),
+            isNull(subChats.name),
+          ),
+        )
         .returning()
         .get() ?? null
     }),
@@ -1095,9 +1106,18 @@ export const chatsRouter = router({
     .mutation(({ input }) => {
       if (input.ids.length === 0) return { deleted: 0 }
       const db = getDatabase()
+      // Same conservative predicate as `deleteSubChatIfEmpty` — keep
+      // anything named (the rename is a user investment) or
+      // message-bearing.
       const result = db
         .delete(subChats)
-        .where(and(inArray(subChats.id, input.ids), eq(subChats.messages, "[]")))
+        .where(
+          and(
+            inArray(subChats.id, input.ids),
+            eq(subChats.messages, "[]"),
+            isNull(subChats.name),
+          ),
+        )
         .returning()
         .all()
       return { deleted: result.length }
