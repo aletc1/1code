@@ -1,6 +1,7 @@
 "use client"
 
-import { memo, useState } from "react"
+import { memo, useEffect, useState } from "react"
+import { useAtomValue } from "jotai"
 import {
   Check,
   CircleDashed,
@@ -11,6 +12,7 @@ import {
 } from "lucide-react"
 import { trpc } from "@/lib/trpc"
 import { cn } from "@/lib/utils"
+import { agentFinishedTickAtomFamily } from "@/features/agents/atoms"
 import { IconSpinner } from "@/components/ui/icons"
 import { Button } from "@/components/ui/button"
 import {
@@ -53,6 +55,15 @@ export const PrWidget = memo(function PrWidget({ chatId }: PrWidgetProps) {
     { chatId },
     { refetchInterval: 30000, enabled: !!chatId },
   )
+
+  // Refresh PR status immediately after any agent run finishes for this chat,
+  // instead of waiting up to 30s for the next poll.
+  const utils = trpc.useUtils()
+  const finishedTick = useAtomValue(agentFinishedTickAtomFamily(chatId))
+  useEffect(() => {
+    if (finishedTick === 0) return
+    utils.chats.getPrStatus.invalidate({ chatId })
+  }, [finishedTick, chatId, utils])
 
   const [isRenameOpen, setIsRenameOpen] = useState(false)
   const [showComments, setShowComments] = useState(false)

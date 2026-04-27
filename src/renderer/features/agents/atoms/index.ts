@@ -1086,6 +1086,24 @@ export const planEditRefetchTriggerAtomFamily = atomFamily((chatId: string) =>
   ),
 )
 
+// Per-scope "agent finished" tick. Incremented when an agent run finishes
+// (Claude or Codex) for a given sub-chat or parent chat. Widgets in the
+// Details Sidebar subscribe to this and decide their own refresh behavior.
+const agentFinishedTickStorageAtom = atom<Record<string, number>>({})
+
+export const agentFinishedTickAtomFamily = atomFamily((scopeId: string) =>
+  atom(
+    (get) => get(agentFinishedTickStorageAtom)[scopeId] ?? 0,
+    (get, set) => {
+      const current = get(agentFinishedTickStorageAtom)
+      set(agentFinishedTickStorageAtom, {
+        ...current,
+        [scopeId]: (current[scopeId] ?? 0) + 1,
+      })
+    },
+  ),
+)
+
 // ============================================================================
 // Diff Data Cache (per workspace) - prevents data loss when switching workspaces
 // ============================================================================
