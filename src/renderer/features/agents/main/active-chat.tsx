@@ -133,6 +133,7 @@ import {
   pendingPrMessageAtom,
   pendingReviewMessageAtom,
   pendingUserQuestionsAtom,
+  agentFinishedTickAtomFamily,
   planEditRefetchTriggerAtomFamily,
   planSidebarOpenAtomFamily,
   QUESTIONS_SKIPPED_MESSAGE,
@@ -6919,6 +6920,16 @@ Make sure to preserve all functionality from both branches when resolving confli
           // Refresh diff stats after agent finishes making changes
           fetchDiffStatsRef.current()
 
+          // Broadcast "agent finished" so subscribed widgets refresh their data.
+          // Always fire — even on manual abort the agent may have left changes
+          // (file edits, partial PR creation, etc.) worth re-fetching.
+          appStore.set(agentFinishedTickAtomFamily(subChatId))
+          appStore.set(agentFinishedTickAtomFamily(chatId))
+          // Also bump the plan-refetch trigger so the Plan widget re-reads its
+          // file content on every finish (covers Write-not-Edit cases the
+          // tool-call detector at active-chat.tsx:3320 misses).
+          appStore.set(planEditRefetchTriggerAtomFamily(subChatId))
+
           pruneIfDetachedAndIdle(subChatId, chatId)
 
           // Note: sidebar timestamp update is handled via optimistic update in handleSend
@@ -7206,6 +7217,16 @@ Make sure to preserve all functionality from both branches when resolving confli
 
           // Refresh diff stats after agent finishes making changes
           fetchDiffStatsRef.current()
+
+          // Broadcast "agent finished" so subscribed widgets refresh their data.
+          // Always fire — even on manual abort the agent may have left changes
+          // (file edits, partial PR creation, etc.) worth re-fetching.
+          appStore.set(agentFinishedTickAtomFamily(newId))
+          appStore.set(agentFinishedTickAtomFamily(chatId))
+          // Also bump the plan-refetch trigger so the Plan widget re-reads its
+          // file content on every finish (covers Write-not-Edit cases the
+          // tool-call detector at active-chat.tsx:3320 misses).
+          appStore.set(planEditRefetchTriggerAtomFamily(newId))
 
           pruneIfDetachedAndIdle(newId, chatId)
 

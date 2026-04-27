@@ -178,7 +178,10 @@ export const TasksWidget = memo(function TasksWidget({
     return n
   }, [tasks])
 
-  if (tasks.length === 0) return null
+  // Hide the widget only when the sub-chat is fully idle. While streaming, keep
+  // the card mounted (with an empty-state body during inter-tool gaps) so the
+  // sidebar layout doesn't flicker as tools start and finish.
+  if (!isStreaming) return null
 
   return (
     <div className="mx-2 mb-2">
@@ -187,17 +190,26 @@ export const TasksWidget = memo(function TasksWidget({
           <Activity className="h-3.5 w-3.5 text-muted-foreground flex-shrink-0" />
           <span className="text-xs font-medium text-foreground">Tasks</span>
           <span className="text-xs text-muted-foreground flex-1 truncate">
-            Running now
+            {total > 0 ? "Running now" : "Waiting…"}
           </span>
-          <span className="text-xs text-muted-foreground tabular-nums flex-shrink-0">
-            {total}
-          </span>
+          {total > 0 && (
+            <span className="text-xs text-muted-foreground tabular-nums flex-shrink-0">
+              {total}
+            </span>
+          )}
         </div>
       </div>
       <div className="rounded-b-lg border border-border/50 border-t-0 py-0.5">
-        {tasks.map((task) => (
-          <TaskRow key={task.toolCallId} task={task} depth={0} />
-        ))}
+        {tasks.length > 0 ? (
+          tasks.map((task) => (
+            <TaskRow key={task.toolCallId} task={task} depth={0} />
+          ))
+        ) : (
+          <div className="flex items-center gap-2 px-2 py-2 text-xs text-muted-foreground">
+            <Loader2 className="h-3 w-3 animate-spin text-muted-foreground/70" />
+            <span>Agent is thinking…</span>
+          </div>
+        )}
       </div>
     </div>
   )
