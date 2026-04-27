@@ -208,6 +208,9 @@ export interface ChatInputAreaProps {
   onContinueWithProvider?: (provider: "claude-code" | "codex") => void
   // Whether this sub-chat tab is the active/visible one (prevents window-level hotkeys in background tabs)
   isActive?: boolean
+  // True when the sub-chat already has messages (or is mid-submit/loading). Enter sends; Shift+Enter inserts a newline.
+  // False for a fresh empty sub-chat — input renders tall and Shift+Enter sends.
+  submitOnEnter?: boolean
 }
 
 /**
@@ -230,7 +233,8 @@ function arePropsEqual(prevProps: ChatInputAreaProps, nextProps: ChatInputAreaPr
     prevProps.isMobile !== nextProps.isMobile ||
     prevProps.queueLength !== nextProps.queueLength ||
     prevProps.firstQueueItemId !== nextProps.firstQueueItemId ||
-    prevProps.isActive !== nextProps.isActive
+    prevProps.isActive !== nextProps.isActive ||
+    prevProps.submitOnEnter !== nextProps.submitOnEnter
   ) {
     return false
   }
@@ -414,6 +418,7 @@ export const ChatInputArea = memo(function ChatInputArea({
   onProviderChange,
   onContinueWithProvider,
   isActive = true,
+  submitOnEnter = false,
 }: ChatInputAreaProps) {
   // Local state - changes here don't re-render parent
   const [hasContent, setHasContent] = useState(false)
@@ -1416,11 +1421,19 @@ export const ChatInputArea = memo(function ChatInputArea({
                   onContentChange={handleContentChange}
                   onSubmit={onSubmitWithQuestionAnswer || handleEditorSubmit}
                   onForceSubmit={onForceSend}
+                  submitOnEnter={submitOnEnter}
                   onShiftTab={toggleMode}
-                  placeholder={isStreaming ? "Add to the queue" : "Plan, @ for context, / for commands"}
+                  placeholder={
+                    isStreaming
+                      ? "Add to the queue"
+                      : submitOnEnter
+                        ? "Plan, @ for context, / for commands"
+                        : "Describe your task — Shift+Enter to send"
+                  }
                   className={cn(
-                    "bg-transparent max-h-[200px] overflow-y-auto p-1",
+                    "bg-transparent max-h-[200px] overflow-y-auto p-1 transition-[min-height] duration-150",
                     isMobile && "min-h-[56px]",
+                    !isMobile && !submitOnEnter && "min-h-[120px]",
                   )}
                   onPaste={handlePaste}
                   onFocus={() => setIsFocused(true)}
