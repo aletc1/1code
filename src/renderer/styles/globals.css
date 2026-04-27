@@ -337,3 +337,81 @@
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
   pointer-events: auto;
 }
+
+/* ─────────────────────────────────────────────────────────────────────────
+ * Dockview theme overrides — map dockview's CSS variables onto the app's
+ * HSL tokens so tabs/groups blend with the rest of the chrome regardless
+ * of light/dark mode. Same selectors work for both themes because the
+ * tokens themselves switch via .dark.
+ * ───────────────────────────────────────────────────────────────────────── */
+.dockview-theme-light,
+.dockview-theme-dark {
+  /* Match the sidebar headers' h-10 (40px) so the tab strip sits on the same
+   * row as the left/right sidebar headers — visually one continuous top row. */
+  --dv-tabs-and-actions-container-height: 40px;
+  --dv-tabs-and-actions-container-font-size: 12px;
+  --dv-tab-font-size: 12px;
+  --dv-border-radius: 4px;
+
+  --dv-group-view-background-color: hsl(var(--background));
+  --dv-tabs-and-actions-container-background-color: hsl(var(--background));
+
+  --dv-activegroup-visiblepanel-tab-background-color: hsl(var(--background));
+  --dv-activegroup-hiddenpanel-tab-background-color: hsl(var(--muted) / 0.5);
+  --dv-inactivegroup-visiblepanel-tab-background-color: hsl(var(--background));
+  --dv-inactivegroup-hiddenpanel-tab-background-color: hsl(var(--muted) / 0.5);
+
+  --dv-activegroup-visiblepanel-tab-color: hsl(var(--foreground));
+  --dv-activegroup-hiddenpanel-tab-color: hsl(var(--muted-foreground));
+  --dv-inactivegroup-visiblepanel-tab-color: hsl(var(--foreground) / 0.7);
+  --dv-inactivegroup-hiddenpanel-tab-color: hsl(var(--muted-foreground) / 0.7);
+
+  --dv-tab-divider-color: hsl(var(--border));
+  --dv-separator-border: hsl(var(--border));
+  --dv-icon-hover-background-color: hsl(var(--accent));
+
+  --dv-drag-over-background-color: hsl(var(--accent) / 0.4);
+  --dv-drag-over-border-color: hsl(var(--primary));
+
+  --dv-paneview-header-border-color: hsl(var(--border));
+  --dv-paneview-active-outline-color: hsl(var(--primary));
+
+  --dv-tabs-container-scrollbar-color: hsl(var(--muted-foreground) / 0.5);
+}
+
+/* The active tab gets a subtle bottom highlight in our chrome — ties the
+ * dockview tab visually to the panel below it. */
+.dockview-theme-light .dv-active-tab,
+.dockview-theme-dark .dv-active-tab {
+  position: relative;
+}
+.dockview-theme-light .dv-active-tab::after,
+.dockview-theme-dark .dv-active-tab::after {
+  content: "";
+  position: absolute;
+  inset: auto 0 0 0;
+  height: 2px;
+  background: hsl(var(--primary));
+}
+
+/* The dockview tab strip lives where the original 32px drag region used to
+ * be — make its empty space draggable so the user can move the window from
+ * the gap between tabs and the right-side actions. The actions container
+ * itself opts out via inline `WebkitAppRegion: no-drag` (see dock-header-
+ * actions.tsx) so its buttons stay clickable. */
+.dockview-theme-light .dv-tabs-and-actions-container,
+.dockview-theme-dark .dv-tabs-and-actions-container {
+  -webkit-app-region: drag;
+}
+.dockview-theme-light .dv-tab,
+.dockview-theme-dark .dv-tab,
+.dockview-theme-light .dv-pre-actions-container,
+.dockview-theme-dark .dv-pre-actions-container,
+.dockview-theme-light .dv-left-actions-container,
+.dockview-theme-dark .dv-left-actions-container,
+.dockview-theme-light .dv-right-actions-container,
+.dockview-theme-dark .dv-right-actions-container,
+.dockview-theme-light .dv-void-container,
+.dockview-theme-dark .dv-void-container {
+  -webkit-app-region: no-drag;
+}

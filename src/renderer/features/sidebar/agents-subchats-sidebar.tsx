@@ -332,7 +332,6 @@ export function AgentsSubChatsSidebar({
       }
 
       utils.chats.list.invalidate()
-      utils.chats.listArchived.invalidate()
 
       // Navigate to previous chat or new workspace
       if (selectedChatId === variables.id) {

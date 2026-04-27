@@ -10,6 +10,9 @@ if (import.meta.env.PROD) {
 
 import ReactDOM from "react-dom/client"
 import { App } from "./App"
+// Import dockview's stylesheet first so globals.css can override --dv-*
+// custom properties below. CSS source order = specificity tiebreaker.
+import "dockview-react/dist/styles/dockview.css"
 import "./styles/globals.css"
 import { preloadDiffHighlighter } from "./lib/themes/diff-view-highlighter"
 

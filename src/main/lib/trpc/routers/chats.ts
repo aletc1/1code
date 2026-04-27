@@ -1,4 +1,4 @@
-import { and, desc, eq, inArray, isNotNull, isNull, sql } from "drizzle-orm"
+import { and, desc, eq, inArray, isNull, sql } from "drizzle-orm"
 import { BrowserWindow } from "electron"
 import * as fs from "fs/promises"
 import * as path from "path"
@@ -236,24 +236,9 @@ export const chatsRouter = router({
         .all()
     }),
 
-  /**
-   * List archived chats (optionally filter by project)
-   */
-  listArchived: publicProcedure
-    .input(z.object({ projectId: z.string().optional() }))
-    .query(({ input }) => {
-      const db = getDatabase()
-      const conditions = [isNotNull(chats.archivedAt)]
-      if (input.projectId) {
-        conditions.push(eq(chats.projectId, input.projectId))
-      }
-      return db
-        .select()
-        .from(chats)
-        .where(and(...conditions))
-        .orderBy(desc(chats.archivedAt))
-        .all()
-    }),
+  // listArchived removed — archived chats are no longer browsable. Archive
+  // is now terminal: the chat's `archivedAt` timestamp marks it as gone
+  // and there's no UI to restore it.
 
   /**
    * Get a single chat with all sub-chats
@@ -576,20 +561,10 @@ export const chatsRouter = router({
       return result
     }),
 
-  /**
-   * Restore an archived chat
-   */
-  restore: publicProcedure
-    .input(z.object({ id: z.string() }))
-    .mutation(({ input }) => {
-      const db = getDatabase()
-      return db
-        .update(chats)
-        .set({ archivedAt: null })
-        .where(eq(chats.id, input.id))
-        .returning()
-        .get()
-    }),
+  // `restore` removed alongside listArchived — there's no longer a path
+  // back from the archive in the UI. Archive remains as the terminal
+  // soft-delete (worktree + terminals are cleaned up; the row is left in
+  // place with archivedAt set so foreign-key relations stay intact).
 
   /**
    * Archive multiple chats at once (also kills terminal processes in each workspace)
@@ -701,116 +676,10 @@ export const chatsRouter = router({
       return db.delete(chats).where(eq(chats.id, input.id)).returning().get()
     }),
 
-  /**
-   * Delete all archived chats permanently (and their worktrees).
-   */
-  deleteAllArchived: publicProcedure
-    .input(z.object({}).default({}))
-    .mutation(async () => {
-      const db = getDatabase()
-
-      const archived = db
-        .select({
-          id: chats.id,
-          branch: chats.branch,
-          worktreePath: chats.worktreePath,
-          projectId: chats.projectId,
-        })
-        .from(chats)
-        .where(isNotNull(chats.archivedAt))
-        .all()
-
-      if (archived.length === 0) return []
-
-      const archivedIds = archived.map((c) => c.id)
-
-      const subChatIds = db
-        .select({ id: subChats.id })
-        .from(subChats)
-        .where(inArray(subChats.chatId, archivedIds))
-        .all()
-        .map((row) => row.id)
-      if (subChatIds.length > 0) {
-        abortClaudeSessionsForSubChats(subChatIds)
-      }
-
-      const worktreeChats = archived.filter(
-        (c) => c.branch != null && c.worktreePath != null,
-      )
-
-      if (worktreeChats.length > 0) {
-        const projectIds = Array.from(
-          new Set(worktreeChats.map((c) => c.projectId)),
-        )
-        const projectRows = db
-          .select()
-          .from(projects)
-          .where(inArray(projects.id, projectIds))
-          .all()
-        const projectPathById = new Map(
-          projectRows.map((p) => [p.id, p.path]),
-        )
-
-        Promise.allSettled(
-          worktreeChats.map((c) => {
-            const projectPath = projectPathById.get(c.projectId)
-            if (!projectPath || !c.worktreePath) {
-              return Promise.resolve({ success: false, error: "missing-project" })
-            }
-            return removeWorktree(projectPath, c.worktreePath)
-          }),
-        )
-          .then((results) => {
-            const failures = results.filter(
-              (r) => r.status === "rejected" || (r.status === "fulfilled" && !r.value.success),
-            ).length
-            if (failures > 0) {
-              console.warn(
-                `[chats.deleteAllArchived] ${failures}/${worktreeChats.length} worktree removals failed`,
-              )
-            } else {
-              console.log(
-                `[chats.deleteAllArchived] Removed ${worktreeChats.length} worktree(s)`,
-              )
-            }
-          })
-          .catch((error) => {
-            console.error(`[chats.deleteAllArchived] Worktree removal error:`, error)
-          })
-
-        Promise.allSettled(
-          worktreeChats.map((c) => terminalManager.killByWorkspaceId(c.id)),
-        )
-          .then((results) => {
-            const totalKilled = results.reduce((sum, r) => {
-              if (r.status === "fulfilled") return sum + r.value.killed
-              return sum
-            }, 0)
-            if (totalKilled > 0) {
-              console.log(
-                `[chats.deleteAllArchived] Killed ${totalKilled} terminal session(s)`,
-              )
-            }
-          })
-          .catch((error) => {
-            console.error(`[chats.deleteAllArchived] Terminal cleanup error:`, error)
-          })
-      }
-
-      for (const c of archived) {
-        trackWorkspaceDeleted(c.id)
-        if (c.worktreePath) {
-          gitCache.invalidateStatus(c.worktreePath)
-          gitCache.invalidateParsedDiff(c.worktreePath)
-        }
-      }
-
-      return db
-        .delete(chats)
-        .where(inArray(chats.id, archivedIds))
-        .returning()
-        .all()
-    }),
+  // deleteAllArchived removed — without a way to browse archived chats,
+  // there's no UI to trigger a bulk-delete-archived sweep. The hard
+  // `delete` mutation above still exists for permanent removal of a
+  // specific chat.
 
   // ============ Sub-chat procedures ============
 
@@ -1209,9 +1078,20 @@ export const chatsRouter = router({
     .input(z.object({ id: z.string() }))
     .mutation(({ input }) => {
       const db = getDatabase()
+      // Conservative match: keep any sub-chat the user invested effort
+      // in. A renamed-but-never-typed-in sub-chat must survive — only
+      // the truly-untouched (no name, no messages) rows are eligible.
+      // Mirrors the shutdown sweep in [main/index.ts]'s before-quit
+      // handler.
       return db
         .delete(subChats)
-        .where(and(eq(subChats.id, input.id), eq(subChats.messages, "[]")))
+        .where(
+          and(
+            eq(subChats.id, input.id),
+            eq(subChats.messages, "[]"),
+            isNull(subChats.name),
+          ),
+        )
         .returning()
         .get() ?? null
     }),
@@ -1226,9 +1106,18 @@ export const chatsRouter = router({
     .mutation(({ input }) => {
       if (input.ids.length === 0) return { deleted: 0 }
       const db = getDatabase()
+      // Same conservative predicate as `deleteSubChatIfEmpty` — keep
+      // anything named (the rename is a user investment) or
+      // message-bearing.
       const result = db
         .delete(subChats)
-        .where(and(inArray(subChats.id, input.ids), eq(subChats.messages, "[]")))
+        .where(
+          and(
+            inArray(subChats.id, input.ids),
+            eq(subChats.messages, "[]"),
+            isNull(subChats.name),
+          ),
+        )
         .returning()
         .all()
       return { deleted: result.length }

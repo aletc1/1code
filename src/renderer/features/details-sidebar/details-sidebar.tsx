@@ -3,7 +3,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useAtom, useAtomValue, useSetAtom } from "jotai"
 import { ArrowUpRight, TerminalSquare, Box, ListTodo, GitPullRequest, Activity, Info, Folder, Search, PlayCircle } from "lucide-react"
-import { ResizableSidebar } from "@/components/ui/resizable-sidebar"
 import { Button } from "@/components/ui/button"
 import {
   Tooltip,
@@ -24,13 +23,11 @@ import { cn } from "@/lib/utils"
 import { useResolvedHotkeyDisplay } from "@/lib/hotkeys"
 import {
   detailsSidebarOpenAtom,
-  detailsSidebarWidthAtom,
   detailsSidebarTabAtom,
   widgetVisibilityAtomFamily,
   widgetOrderAtomFamily,
   WIDGET_REGISTRY,
   type WidgetId,
-  type DetailsSidebarTab,
 } from "./atoms"
 import { WidgetSettingsPopup } from "./widget-settings-popup"
 import { InfoSection } from "./sections/info-section"
@@ -351,19 +348,9 @@ export function DetailsSidebar({
   const noopSelectFile = useCallback(() => {}, [])
 
   return (
-    <ResizableSidebar
-      isOpen={isOpen}
-      onClose={closeSidebar}
-      widthAtom={detailsSidebarWidthAtom}
-      side="right"
-      minWidth={250}
-      maxWidth={700}
-      animationDuration={0}
-      initialWidth={0}
-      exitWidth={0}
-      showResizeTooltip={true}
-      className="bg-tl-background border-l"
-      style={{ borderLeftWidth: "0.5px", overflow: "hidden" }}
+    <div
+      className="h-full w-full bg-tl-background border-l overflow-hidden"
+      style={{ borderLeftWidth: "0.5px" }}
     >
       <div className="flex flex-col h-full min-w-0 overflow-hidden">
         {/* Header with pill tabs */}
@@ -664,6 +651,6 @@ export function DetailsSidebar({
           className={cn("flex-1", activeTab !== "search" && "hidden")}
         />
       </div>
-    </ResizableSidebar>
+    </div>
   )
 }

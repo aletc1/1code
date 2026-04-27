@@ -86,14 +86,20 @@ export const ALL_SHORTCUT_ACTIONS: ShortcutAction[] = [
   // AGENTS
   // ============================================
   {
+    // The ID stays "new-agent" so user-customized bindings keep working,
+    // but the meaning shifted — it now creates a *sub-chat* in the
+    // active workspace's dockview, not a whole new workspace.
     id: "new-agent",
-    label: "Create new agent",
+    label: "New chat",
     category: "agents",
     defaultKeys: ["cmd", "T"],
   },
   {
+    // Repurposed: this used to be the "new agent in split view" action
+    // (which never had a real handler). It's now the "new terminal"
+    // action — opens a terminal panel in the active workspace.
     id: "new-agent-split",
-    label: "New agent in split view",
+    label: "New terminal",
     category: "agents",
     defaultKeys: ["cmd", "shift", "T"],
   },
@@ -183,6 +189,13 @@ export const ALL_SHORTCUT_ACTIONS: ShortcutAction[] = [
     label: "Go to file",
     category: "agents",
     defaultKeys: ["cmd", "P"],
+  },
+  {
+    // ⌘⇧F — opens the project-wide search panel in the dockview.
+    id: "open-search",
+    label: "Search in project",
+    category: "agents",
+    defaultKeys: ["cmd", "shift", "F"],
   },
   {
     id: "voice-input",

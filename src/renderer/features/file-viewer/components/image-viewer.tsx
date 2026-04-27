@@ -1,13 +1,6 @@
 import { useMemo, useCallback } from "react"
-import { Loader2, AlertCircle, Check, X } from "lucide-react"
-import { useAtom, useAtomValue } from "jotai"
-import { Button } from "@/components/ui/button"
-import {
-  IconCloseSidebarRight,
-  IconSidePeek,
-  IconCenterPeek,
-  IconFullPage,
-} from "@/components/ui/icons"
+import { Loader2, AlertCircle } from "lucide-react"
+import { useAtomValue } from "jotai"
 import { Kbd } from "@/components/ui/kbd"
 import {
   Tooltip,
@@ -19,21 +12,7 @@ import { preferredEditorAtom } from "@/lib/atoms"
 import { useResolvedHotkeyDisplay } from "@/lib/hotkeys"
 import { APP_META } from "../../../../shared/external-apps"
 import { EDITOR_ICONS } from "@/lib/editor-icons"
-import {
-  DropdownMenu,
-  DropdownMenuTrigger,
-  DropdownMenuContent,
-  DropdownMenuItem,
-} from "@/components/ui/dropdown-menu"
-import { fileViewerDisplayModeAtom } from "../../agents/atoms"
-import { getFileIconByExtension } from "../../agents/mentions/agents-file-mention"
 import { getFileName } from "../utils/file-utils"
-
-const FILE_VIEWER_MODES = [
-  { value: "side-peek" as const, label: "Sidebar", Icon: IconSidePeek },
-  { value: "center-peek" as const, label: "Dialog", Icon: IconCenterPeek },
-  { value: "full-page" as const, label: "Fullscreen", Icon: IconFullPage },
-]
 
 interface ImageViewerProps {
   filePath: string
@@ -44,10 +23,9 @@ interface ImageViewerProps {
 export function ImageViewer({
   filePath,
   projectPath,
-  onClose,
+  onClose: _onClose,
 }: ImageViewerProps) {
   const fileName = getFileName(filePath)
-  const [displayMode, setDisplayMode] = useAtom(fileViewerDisplayModeAtom)
   const preferredEditor = useAtomValue(preferredEditorAtom)
   const editorMeta = APP_META[preferredEditor]
   const openInAppMutation = trpc.external.openInApp.useMutation()
@@ -70,71 +48,16 @@ export function ImageViewer({
 
   return (
     <div className="flex flex-col h-full bg-background">
-      {/* Header */}
+      {/* Right-side actions only — dockview's tab provides the title +
+          close, and the tab icon already shows the file type. */}
       <div
-        className="@container flex items-center justify-between px-2 h-10 border-b border-border/50 bg-background flex-shrink-0"
+        className="@container flex items-center justify-end px-2 h-10 border-b border-border/50 bg-background flex-shrink-0"
         style={{
           // @ts-expect-error - WebKit-specific property
           WebkitAppRegion: "no-drag",
         }}
       >
-        {/* Left side: Close + mode switcher + file info */}
-        <div className="flex items-center gap-1 min-w-0 flex-1">
-          <Button
-            variant="ghost"
-            size="sm"
-            className="h-6 w-6 p-0 flex-shrink-0 hover:bg-foreground/10"
-            onClick={onClose}
-          >
-            {displayMode === "side-peek" ? (
-              <IconCloseSidebarRight className="size-4 text-muted-foreground" />
-            ) : (
-              <X className="size-4 text-muted-foreground" />
-            )}
-          </Button>
-          {/* Display mode switcher */}
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button
-                variant="ghost"
-                size="sm"
-                className="h-6 w-6 p-0 flex-shrink-0 hover:bg-foreground/10"
-              >
-                {(() => {
-                  const CurrentIcon = FILE_VIEWER_MODES.find((m) => m.value === displayMode)?.Icon ?? IconSidePeek
-                  return <CurrentIcon className="size-4 text-muted-foreground" />
-                })()}
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="start" className="min-w-[140px]">
-              {FILE_VIEWER_MODES.map(({ value, label, Icon }) => (
-                <DropdownMenuItem
-                  key={value}
-                  onClick={() => setDisplayMode(value)}
-                  className="flex items-center gap-2"
-                >
-                  <Icon className="size-4 text-muted-foreground" />
-                  <span className="flex-1">{label}</span>
-                  {displayMode === value && (
-                    <Check className="size-4 text-muted-foreground ml-auto" />
-                  )}
-                </DropdownMenuItem>
-              ))}
-            </DropdownMenuContent>
-          </DropdownMenu>
-          <div className="flex items-center gap-2 min-w-0 flex-1 ml-1">
-            {(() => {
-              const Icon = getFileIconByExtension(filePath)
-              return Icon ? <Icon className="h-3.5 w-3.5 flex-shrink-0" /> : null
-            })()}
-            <span className="text-sm font-medium truncate" title={filePath}>
-              {fileName}
-            </span>
-          </div>
-        </div>
-        {/* Right side: Actions */}
         <div className="flex items-center gap-1 flex-shrink-0">
-          {/* Open in editor */}
           <Tooltip delayDuration={500}>
             <TooltipTrigger asChild>
               <button

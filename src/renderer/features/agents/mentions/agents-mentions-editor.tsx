@@ -1122,12 +1122,22 @@ export const AgentsMentionsEditor = memo(
             setHasContent(newHasContent)
             onContentChange?.(newHasContent)
 
-            // Position cursor at the end of content
+            // Position cursor at the end of content. The editor may not be
+            // attached to the live document yet (e.g. when restoring a draft
+            // for a sub-chat that's mounted inside an inactive dockview panel),
+            // in which case `selectAllChildren` doesn't produce a Range and
+            // `collapseToEnd` throws "there is no selection". Guard both.
             if (newHasContent) {
-              const sel = window.getSelection()
-              if (sel) {
-                sel.selectAllChildren(editorRef.current)
-                sel.collapseToEnd()
+              try {
+                const sel = window.getSelection()
+                if (sel && editorRef.current.isConnected) {
+                  sel.selectAllChildren(editorRef.current)
+                  if (sel.rangeCount > 0) {
+                    sel.collapseToEnd()
+                  }
+                }
+              } catch {
+                // Best-effort cursor placement; never let this take down the chat.
               }
             }
           },

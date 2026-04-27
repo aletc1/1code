@@ -56,19 +56,7 @@ import {
   type SubChatMeta,
 } from "../stores/sub-chat-store"
 import { useShallow } from "zustand/react/shallow"
-import {
-  DndContext,
-  DragOverlay,
-  PointerSensor,
-  useSensor,
-  useSensors,
-  closestCenter,
-  type DragEndEvent,
-  type DragStartEvent,
-} from "@dnd-kit/core"
-import { arrayMove } from "@dnd-kit/sortable"
 import { PlanIcon, AgentIcon } from "../../../components/ui/icons"
-import { SPLIT_DROP_DATA } from "./split-view-container"
 import { motion, AnimatePresence } from "motion/react"
 // import { ResizableSidebar } from "@/app/(alpha)/canvas/[id]/{components}/resizable-sidebar"
 import { ResizableSidebar } from "../../../components/ui/resizable-sidebar"
@@ -104,7 +92,15 @@ function DraggedSubChatPreview({ id }: { id: string }) {
 }
 
 // Main Component
-export function AgentsContent() {
+export function AgentsContent({
+  subChatIdOverride,
+}: {
+  /** When provided, the ChatView mounted below renders this specific
+   *  sub-chat regardless of the store's `activeSubChatId`. ChatPanel
+   *  passes its own `params.subChatId` so each dockview tab shows its
+   *  own conversation. */
+  subChatIdOverride?: string
+} = {}) {
   const [selectedChatId, setSelectedChatId] = useAtom(selectedAgentChatIdAtom)
   const desktopView = useAtomValue(desktopViewAtom)
   const setSelectedChatIsRemote = useSetAtom(selectedChatIsRemoteAtom)
@@ -824,13 +820,14 @@ export function AgentsContent() {
     selectedChatId !== null &&
     (subChatsStoreChatId !== selectedChatId || subChatsCount === 0)
 
-  // Track sub-chats sidebar open state for animation control
-  // Now renders even while loading to show spinner (mobile always uses tabs)
-  const isSubChatsSidebarOpen =
-    selectedChatId &&
-    subChatsSidebarMode === "sidebar" &&
-    !isMobile &&
-    !desktopView
+  // Sub-chats sidebar is permanently hidden — open sub-chats now appear as
+  // dockview tabs (see [chat-panel.tsx]) so the dedicated rail-within-rail
+  // is redundant. Keep the variable around so dependent effects below stay
+  // wired without touching them.
+  const isSubChatsSidebarOpen = false as const
+  void subChatsSidebarMode
+  void desktopView
+  void isMobile
 
   useEffect(() => {
     // When sidebar closes, reset for animation on next open
@@ -995,48 +992,13 @@ export function AgentsContent() {
     )
   }
 
-  // Shared drag context covering sidebar + main content. Drag within sidebar
-  // reorders (sortable); drag onto a SPLIT_DROP_DATA target adds to split.
-  // 4px activation distance preserves click semantics for non-drag taps.
-  const dndSensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
-  )
-  // Track the item currently being dragged so <DragOverlay> can render a
-  // portal-mounted preview that isn't clipped by the sidebar's overflow.
-  const [activeDragId, setActiveDragId] = useState<string | null>(null)
-  const handleDndStart = useCallback((event: DragStartEvent) => {
-    setActiveDragId(String(event.active.id))
-  }, [])
-  const handleDndEnd = useCallback((event: DragEndEvent) => {
-    setActiveDragId(null)
-    const { active, over } = event
-    if (!over || active.id === over.id) return
-    const activeId = String(active.id)
-    const store = useAgentSubChatStore.getState()
-
-    if (over.data?.current?.type === SPLIT_DROP_DATA.type) {
-      store.addToSplit(activeId)
-      return
-    }
-
-    // Otherwise: sidebar reorder.
-    const fromIdx = store.openSubChatIds.indexOf(activeId)
-    const toIdx = store.openSubChatIds.indexOf(String(over.id))
-    if (fromIdx < 0 || toIdx < 0) return
-    store.setOpenSubChats(arrayMove(store.openSubChatIds, fromIdx, toIdx))
-  }, [])
-  const handleDndCancel = useCallback(() => setActiveDragId(null), [])
-
-  // Desktop layout
+  // The legacy @dnd-kit DndContext + sub-chat sortable sidebar used to
+  // live here, plus a "drop onto SPLIT_DROP_DATA target adds to split"
+  // wiring. Dockview's native tab drag/drop replaces all of it; the
+  // pointer-down capture from @dnd-kit's PointerSensor was actively
+  // blocking dockview's tab drops, so the whole stack was removed.
   return (
     <>
-      <DndContext
-        sensors={dndSensors}
-        collisionDetection={closestCenter}
-        onDragStart={handleDndStart}
-        onDragEnd={handleDndEnd}
-        onDragCancel={handleDndCancel}
-      >
       <div className="flex h-full">
         {/* Sub-chats sidebar - only show in sidebar mode when viewing a chat */}
         <ResizableSidebar
@@ -1072,44 +1034,29 @@ export function AgentsContent() {
           className="flex-1 min-w-0 overflow-hidden"
           style={{ minWidth: "350px" }}
         >
-          {desktopView === "settings" ? (
-            <SettingsContent />
-          ) : desktopView === "usage" ? (
-            <UsageContent />
-          ) : betaAutomationsEnabled && desktopView === "automations" ? (
-            <AutomationsView />
-          ) : betaAutomationsEnabled && desktopView === "automations-detail" ? (
-            <AutomationsDetailView />
-          ) : betaAutomationsEnabled && desktopView === "inbox" ? (
-            <InboxView />
-          ) : selectedChatId ? (
+          {/* System-wide views (settings / usage / automations / inbox /
+              kanban / new-workspace) are not rendered here — they live as
+              an overlay on the layout shell so they replace the workspace
+              surface entirely instead of nesting inside a dockview tab.
+              See [agents-layout.tsx]'s CenterRailPanel. The no-chat fall-
+              through stays null so the overlay isn't duplicate-mounted
+              underneath. */}
+          {selectedChatId ? (
             <div className="h-full flex flex-col relative overflow-hidden">
               <ChatView
-                key={`${chatSourceMode}-${selectedChatId}`}
+                key={`${chatSourceMode}-${selectedChatId}-${subChatIdOverride ?? "active"}`}
                 chatId={selectedChatId}
                 isSidebarOpen={sidebarOpen}
                 onToggleSidebar={() => setSidebarOpen((prev) => !prev)}
                 selectedTeamName={selectedTeam?.name}
                 selectedTeamImageUrl={selectedTeam?.image_url}
+                subChatIdOverride={subChatIdOverride}
               />
             </div>
-          ) : selectedDraftId || showNewChatForm ? (
-            <div className="h-full flex flex-col relative overflow-hidden">
-              <NewChatForm key={`new-chat-${newChatFormKeyRef.current}`} />
-            </div>
-          ) : betaKanbanEnabled ? (
-            <KanbanView />
-          ) : (
-            <div className="h-full flex flex-col relative overflow-hidden">
-              <NewChatForm key={`new-chat-${newChatFormKeyRef.current}`} />
-            </div>
-          )}
+          ) : null}
         </div>
       </div>
-      <DragOverlay dropAnimation={null}>
-        {activeDragId ? <DraggedSubChatPreview id={activeDragId} /> : null}
-      </DragOverlay>
-      </DndContext>
+      {/* DragOverlay + DndContext removed (see note above the return). */}
 
       {/* Quick-switch dialog - Agents (Opt+Ctrl+Tab) */}
       <AgentsQuickSwitchDialog

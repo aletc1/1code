@@ -65,21 +65,52 @@ src/
 └── renderer/                # React 19 UI
     ├── App.tsx              # Root with providers
     ├── features/
-    │   ├── agents/          # Main chat interface
+    │   ├── layout/          # Outer 3-cell gridview shell
+    │   │   ├── agents-layout.tsx   # GridviewReact (left rail / center / right rail) +
+    │   │   │                       # system-view overlay + per-workspace dock-shell wiring
+    │   │   └── details-rail.tsx    # Right-rail widget host (workspace-scoped)
+    │   ├── dock/            # dockview-react windowing system (new in this refactor)
+    │   │   ├── dock-shell.tsx              # DockviewReact instance + onDidRemovePanel cleanup
+    │   │   ├── workspace-dock-shell.tsx    # One per visited workspace; visibility-toggled
+    │   │   ├── chat-panel-sync.tsx         # Reconciles dockview chat:* panels w/ store
+    │   │   ├── dock-context.tsx            # DockProvider exposing active workspace's dockApi
+    │   │   ├── panel-registry.tsx          # kind → React component map
+    │   │   ├── panels/      # chat, terminal, file, plan, diff, search, files-tree, main
+    │   │   ├── atoms.ts     # mountedWorkspaceIdsAtom, widgetPanelMapAtom, etc.
+    │   │   ├── persistence.ts              # Per-workspace dock + global shell snapshots
+    │   │   ├── use-panel-actions.ts        # newSubChat / openTerminal / openDiff / etc.
+    │   │   ├── use-widget-panel.ts         # Widget ↔ panel mutex hook
+    │   │   ├── add-or-focus.ts             # Idempotent "add or focus existing" helper
+    │   │   ├── renamable-tab.tsx           # Default tab component (rename, icons, close)
+    │   │   ├── chat-tab-archive.tsx        # Confirm-on-close for chat tabs
+    │   │   ├── terminal-tab-close.tsx      # Confirm-on-close for terminal tabs
+    │   │   ├── dock-header-actions.tsx     # [+] / Chat / Terminal in tab strip right side
+    │   │   ├── dock-header-left-actions.tsx # Hamburger toggle in tab strip left side
+    │   │   └── dock-hotkeys-host.tsx       # Bridges agent actions → panel actions
+    │   ├── agents/          # Chat interface (no longer owns layout)
     │   │   ├── main/        # active-chat.tsx, new-chat-form.tsx
-    │   │   ├── ui/          # Tool renderers, preview, diff view
+    │   │   ├── ui/          # Tool renderers, agents-content, agent-diff-view, …
     │   │   ├── commands/    # Slash commands (/plan, /agent, /clear)
     │   │   ├── atoms/       # Jotai atoms for agent state
-    │   │   └── stores/      # Zustand store for sub-chats
-    │   ├── sidebar/         # Chat list, archive, navigation
-    │   ├── sub-chats/       # Tab/sidebar sub-chat management
-    │   └── layout/          # Main layout with resizable panels
+    │   │   ├── stores/      # Zustand store for sub-chats (kept; metadata source)
+    │   │   ├── lib/         # agents-actions.ts, agents-hotkeys-manager.ts, model-switching.ts
+    │   │   └── utils/       # pr-message.ts (PR / review prompt generators)
+    │   ├── details-sidebar/ # Right-rail widgets (Plan, Changes, Terminal, MCP, …)
+    │   │   └── sections/    # Each widget + PromotedToPanelStub
+    │   ├── changes/         # Diff viewer (ChangesPanel, AgentDiffView, DiffSidebarHeader)
+    │   ├── file-viewer/     # Code / Markdown / Image viewers
+    │   ├── terminal/        # xterm + node-pty wiring
+    │   ├── sidebar/         # Workspace list (left rail body)
+    │   ├── kanban/          # System-wide Kanban view
+    │   ├── automations/, inbox, settings/, usage/    # Other system-wide views
+    │   └── ...
     ├── components/ui/       # Radix UI wrappers (button, dialog, etc.)
     └── lib/
         ├── atoms/           # Global Jotai atoms
         ├── stores/          # Global Zustand stores
-        ├── trpc.ts          # Real tRPC client
-        └── mock-api.ts      # DEPRECATED - being replaced with real tRPC
+        ├── trpc.ts          # tRPC client
+        ├── jotai-store.ts   # Default jotai store (used for atom reads outside React)
+        └── hotkeys/         # Shortcut registry + keydown manager
 ```
 
 ## Database (Drizzle ORM)
@@ -125,6 +156,15 @@ const projectChats = db.select().from(chats).where(eq(chats.projectId, id)).all(
 - Session resume via `sessionId` stored in SubChat
 - Message streaming via tRPC subscription (`claude.onMessage`)
 
+### Windowing (dockview-react)
+- Outer **gridview** with three cells: left rail (workspace list) / center (DockviewReact) / right rail (Details widgets). Center is the only resizable workspace surface; the rails are fixed columns with their own visibility toggles.
+- One **`WorkspaceDockShell`** per workspace the user has visited this session, all stacked absolutely in the center cell. Active shell is `opacity-1 / pointer-events-auto`; the rest are `opacity-0 / pointer-events-none` (NOT `display:none` — that breaks dockview's `ResizeObserver`). Switching workspaces is a CSS toggle, so terminals, chat streams, xterm scrollback, and form drafts all survive.
+- Each workspace's panels (`chat:${subChatId}`, `terminal:${paneId}`, `file:${absolutePath}`, `plan:${chatId}:${planPath}`, `diff:${chatId}`, `search:${projectId}`, `files-tree:${projectId}`) carry a stable id derived from the underlying entity. Layout serializes via `dockApi.toJSON()`.
+- **System views** (Settings / Usage / Kanban / Automations / Inbox / New Workspace) are rendered as an absolute overlay on the center cell when `useEffectiveSystemView()` returns non-null. They cover the dockview rather than mounting inside a panel.
+- **Widget ↔ panel mutex**: each expandable Details widget (Plan / Changes / Terminal) uses `useWidgetPanel(widgetId, entity)` to swap to a `<PromotedToPanelStub />` when promoted to a dockview panel. `widgetPanelMapAtom` is the single source of truth.
+- **Persistence**: shell layout (gridview) is global at `agents:shell:v3`; dock layout is per-workspace at `agents:dock:project:${id}` (or `agents:dock:no-workspace`). Schema bumps invalidate older saved layouts.
+- **Option B contract**: only the *active* workspace's `ChatPanelSync` runs (gated by an `active` prop), and only the active workspace's `ChatView` writes to the global sub-chat store (gated by `chatId === selectedChatId`). Don't break this — inactive workspaces clobber the active slice if they leak.
+
 ## Tech Stack
 
 | Layer | Tech |
@@ -146,12 +186,38 @@ const projectChats = db.select().from(chats).where(eq(chats.projectId, id)).all(
 
 ## Important Files
 
+**Build / config**
 - `electron.vite.config.ts` - Build config (main/preload/renderer entries)
+- `build.sh` - Cross-platform packaging script (uses `set -euo pipefail`)
+
+**Backend**
+- `src/main/index.ts` - App entry; `before-quit` sweeps empty unnamed sub-chats
 - `src/main/lib/db/schema/index.ts` - Drizzle schema (source of truth)
 - `src/main/lib/db/index.ts` - DB initialization + auto-migrate
-- `src/renderer/features/agents/atoms/index.ts` - Agent UI state atoms
-- `src/renderer/features/agents/main/active-chat.tsx` - Main chat component
 - `src/main/lib/trpc/routers/claude.ts` - Claude SDK integration
+- `src/main/lib/trpc/routers/chats.ts` - chats / sub-chats CRUD + diff endpoints
+- `src/main/lib/trpc/routers/changes.ts` - git status / branches / PR creation
+
+**Renderer — layout**
+- `src/renderer/App.tsx` - Root providers
+- `src/renderer/features/layout/agents-layout.tsx` - Outer gridview shell + system-view overlay + per-workspace dock-shell wiring
+- `src/renderer/features/dock/workspace-dock-shell.tsx` - One DockShell per workspace
+- `src/renderer/features/dock/dock-shell.tsx` - DockviewReact instance + onDidRemovePanel cleanup
+- `src/renderer/features/dock/panel-registry.tsx` - Component map for every panel kind
+- `src/renderer/features/dock/persistence.ts` - Per-workspace + global layout snapshots
+- `src/renderer/features/dock/use-panel-actions.ts` - Single source of truth for "open a panel" flows
+
+**Renderer — chat**
+- `src/renderer/features/agents/main/active-chat.tsx` - ChatView (still ~7k LOC, slated for extraction)
+- `src/renderer/features/agents/atoms/index.ts` - Agent UI state atoms
+- `src/renderer/features/agents/stores/sub-chat-store.ts` - Per-workspace `openSubChatIds` / `activeSubChatId`
+- `src/renderer/features/agents/lib/agents-actions.ts` - Hotkey-driven action handlers
+- `src/renderer/features/agents/lib/agents-hotkeys-manager.ts` - keydown listener + shortcut → action map
+
+**Renderer — diff / changes**
+- `src/renderer/features/changes/changes-panel.tsx` - File list + commit panel (Changes / History tabs)
+- `src/renderer/features/agents/ui/agent-diff-view.tsx` - Line-by-line diff viewer
+- `src/renderer/features/changes/components/diff-sidebar-header/diff-sidebar-header.tsx` - Branch + Review / Publish / Merge / kebab toolbar
 
 ## Debugging First Install Issues
 
@@ -235,21 +301,27 @@ npm version patch --no-git-tag-version  # 0.0.27 → 0.0.28
 3. User clicks Download → downloads ZIP in background
 4. User clicks "Restart Now" → installs update and restarts
 
-## Current Status (WIP)
+## Current Status
 
-**Done:**
-- Drizzle ORM setup with schema (projects, chats, sub_chats)
-- Auto-migration on app startup
-- tRPC routers structure
+**Done (this branch — windowing refactor):**
+- Outer gridview shell (left rail / center / right rail).
+- DockviewReact center cell with stable-id panels for chat / terminal / file / plan / diff / search / files-tree.
+- Per-workspace `WorkspaceDockShell`s, visibility-toggled — terminal PTYs and chat streams survive workspace switches.
+- Per-workspace dock layout persistence + global shell layout (schema v3).
+- Widget ↔ panel mutex (Plan / Changes / Terminal).
+- Renamable tabs, per-kind tab icons, last-tab close guard, confirm-on-close for chat & terminal tabs.
+- Per-group `[+]` / Chat / Terminal header actions.
+- Hotkeys: ⌘T (new chat), ⌘⇧T (new terminal), ⌘P (file picker), ⌘⇧F (search), ⌘D (open Changes panel).
+- System-view overlay for Settings / Usage / Kanban / Automations / Inbox / New Workspace.
+- Diff panel: ChangesPanel + AgentDiffView + DiffSidebarHeader, with Review / Create PR / Merge / Fix-conflicts wired.
 
-**In Progress:**
-- Replacing `mock-api.ts` with real tRPC calls in renderer
-- ProjectSelector component (local folder picker)
-
-**Planned:**
-- Git worktree per chat (isolation)
-- Claude Code execution in worktree path
-- Full feature parity with web app
+**Known limitations / deferred:**
+- `active-chat.tsx` is still ~7k LOC; the planned `<ChatBody />` extraction wasn't done.
+- Mobile branch (`agents-content.tsx if (isMobile)`) still uses legacy `TerminalSidebar` / `KanbanView` dispatch — unaudited against the dockview changes.
+- Display-mode atoms (`terminalDisplayModeAtom`, `diffViewDisplayModeAtom`, `fileViewerDisplayModeAtom` + `*SidebarOpenAtomFamily` siblings) are vestigial but still consumed by `changes-view.tsx` / `agent-diff-view.tsx` / `git-activity-badges.tsx` / `agent-plan-file-tool.tsx` / mobile `terminal-sidebar.tsx`. Removal is a 7-file follow-up.
+- `chats.listArchived` / `chats.restore` / `chats.deleteAllArchived` were removed; Cmd+Z workspace undo is a no-op (sub-chat undo still works). The `archived_at` column remains in the schema and is filtered out by `chats.list`.
+- `mock-api.ts` still wraps `trpc.chats.listArchived` / `restore` but has no live consumers — TypeScript-only.
+- Several pre-existing hotkeys (`prev-agent`, `next-agent`, `archive-workspace`, `archive-agent`, etc.) lack handlers in `AGENT_ACTIONS`. Not introduced by this refactor.
 
 ## Debug Mode
 

@@ -26,6 +26,8 @@ import { preferredEditorAtom } from "@/lib/atoms"
 import { APP_META } from "../../../../shared/external-apps"
 import type { ParsedDiffFile } from "../types"
 import { BranchSwitcherPopover } from "@/features/changes/components/branch-switcher/branch-switcher-popover"
+import { useWidgetPanel } from "../../dock"
+import { PromotedToPanelStub } from "./promoted-to-panel-stub"
 
 interface ChangesWidgetProps {
   chatId: string
@@ -88,6 +90,21 @@ export const ChangesWidget = memo(function ChangesWidget({
   onFileSelect,
   diffDisplayMode = "side-peek",
 }: ChangesWidgetProps) {
+  // Widget ↔ panel mutex: when promoted to a dockview panel, hide the summary
+  // and render a small "return to summary" stub instead.
+  const widgetPanel = useWidgetPanel("diff", {
+    kind: "diff",
+    data: { chatId },
+  })
+
+  const handleExpand = useCallback(() => {
+    if (widgetPanel.available) {
+      widgetPanel.openAsPanel()
+    } else {
+      onExpand?.()
+    }
+  }, [widgetPanel, onExpand])
+
   // Data is now cached at the ActiveChat level via workspaceDiffCacheAtomFamily
   // So parsedFileDiffs and diffStats persist across workspace switches
   const displayFiles = parsedFileDiffs ?? []
@@ -253,6 +270,13 @@ export const ChangesWidget = memo(function ChangesWidget({
     }
   }, [displayFiles, selectedForCommit, onCommit, onCommitAndPush, getDisplayPath, shouldCommitAndPush])
 
+  // Promoted to a dockview panel — render the stub instead of the summary.
+  if (widgetPanel.isOpen) {
+    return (
+      <PromotedToPanelStub label="Changes" onReturnToSummary={widgetPanel.closePanel} />
+    )
+  }
+
   return (
     <div className="mx-2 mb-2">
       <div className={cn("rounded-lg border border-border/50 overflow-hidden")}>
@@ -295,14 +319,17 @@ export const ChangesWidget = memo(function ChangesWidget({
           {/* Spacer */}
           <div className="flex-1" />
 
-          {/* Expand to sidebar button */}
-          {onExpand && (
+          {/* Expand to panel — same hover-revealed top-right pattern as
+              the rest of the widgets in WidgetCard. Was previously gated
+              on an `onExpand` prop, but the dockview always provides a
+              target via `widgetPanel.openAsPanel()`. */}
+          {(widgetPanel.available || onExpand) && (
             <Tooltip>
               <TooltipTrigger asChild>
                 <Button
                   variant="ghost"
                   size="icon"
-                  onClick={onExpand}
+                  onClick={handleExpand}
                   className="h-5 w-5 p-0 hover:bg-foreground/10 text-muted-foreground hover:text-foreground rounded-md opacity-0 group-hover:opacity-100 transition-[background-color,opacity,transform] duration-150 ease-out active:scale-[0.97] flex-shrink-0"
                   aria-label="Expand changes"
                 >
@@ -354,7 +381,7 @@ export const ChangesWidget = memo(function ChangesWidget({
                       if (onFileSelect) {
                         onFileSelect(filePath)
                       } else {
-                        onExpand?.()
+                        handleExpand()
                       }
                     }}
                     onCheckboxChange={() => handleCheckboxChange(filePath)}
@@ -382,10 +409,11 @@ export const ChangesWidget = memo(function ChangesWidget({
               })}
             </div>
 
-            {/* Action buttons */}
-            <div className="flex gap-2 p-2 border-t border-border/50">
-              {/* Commit button */}
-              {onCommit && (
+            {/* Action buttons. The previous "View Diff" button is gone —
+                the top-right ↗ icon (revealed on header hover) opens the
+                full Changes panel, matching the rest of the widgets. */}
+            {onCommit && (
+              <div className="flex gap-2 p-2 border-t border-border/50">
                 <Button
                   variant="default"
                   size="sm"
@@ -399,18 +427,8 @@ export const ChangesWidget = memo(function ChangesWidget({
                       ? `Commit & Push${commitLabelSuffix}`
                       : `Commit${commitLabelSuffix}`)}
                 </Button>
-              )}
-
-              {/* View diff button */}
-              <Button
-                variant="outline"
-                size="sm"
-                className={cn("h-7 text-xs", onCommit ? "w-24" : "w-full")}
-                onClick={() => onExpand?.()}
-              >
-                View Diff
-              </Button>
-            </div>
+              </div>
+            )}
           </>
         ) : (
           <div className="text-xs text-muted-foreground px-2 py-2">

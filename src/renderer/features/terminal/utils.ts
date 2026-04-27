@@ -54,6 +54,39 @@ export function getScriptTerminalId(scriptName: string): string {
 }
 
 /**
+ * Generate an ad-hoc terminal id (used for non-script terminals created via
+ * the [+] menu / Terminal quick-launch). Just an 8-char uuid slice.
+ */
+export function generateTerminalId(): string {
+  return crypto.randomUUID().slice(0, 8)
+}
+
+/**
+ * Build the paneId for a generic (non-script) terminal in a chat scope.
+ * Mirrors what TerminalSection / terminal-sidebar previously used so the
+ * backend already-spawned PTY (if any) is reachable on rehydrate.
+ */
+export function buildTerminalPaneId(scopeKey: string, terminalId: string): string {
+  return `${scopeKey}:term:${terminalId}`
+}
+
+/**
+ * Pick a free "Terminal N" label for a freshly-minted terminal in a list.
+ */
+export function getNextTerminalName(
+  existing: { name: string }[],
+): string {
+  const numbers = existing
+    .map((t) => {
+      const match = t.name.match(/^Terminal (\d+)$/)
+      return match ? parseInt(match[1], 10) : 0
+    })
+    .filter((n) => n > 0)
+  const max = numbers.length > 0 ? Math.max(...numbers) : 0
+  return `Terminal ${max + 1}`
+}
+
+/**
  * Escape file paths for shell usage.
  * Wraps paths containing spaces in quotes.
  *

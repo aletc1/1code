@@ -1,6 +1,14 @@
 "use client"
 
-import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react"
+import {
+  memo,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react"
 import { useAtom, useAtomValue } from "jotai"
 import { useTheme } from "next-themes"
 import { fullThemeDataAtom } from "@/lib/atoms"
@@ -8,6 +16,16 @@ import { motion } from "motion/react"
 import { ArrowUpRight } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { PlusIcon } from "@/components/ui/icons"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
 import {
   Tooltip,
   TooltipContent,
@@ -26,6 +44,8 @@ import {
 import { trpc } from "@/lib/trpc"
 import type { TerminalInstance } from "@/features/terminal/types"
 import { cn } from "@/lib/utils"
+import { useWidgetPanel } from "../../dock"
+import { PromotedToPanelStub } from "./promoted-to-panel-stub"
 
 interface TerminalWidgetProps {
   chatId: string
@@ -71,6 +91,47 @@ export const TerminalWidget = memo(function TerminalWidget({
   const [allActiveIds, setAllActiveIds] = useAtom(activeTerminalIdAtom)
   const terminalCwds = useAtomValue(terminalCwdAtom)
 
+  // Resolve the active terminal's identity up-front so the widget mutex can
+  // bind to its `paneId` (each terminal is now its own dockview panel — see
+  // [terminal-panel.tsx]). When no terminal exists yet the mutex no-ops; the
+  // useEffect below auto-creates one on mount.
+  const terminalsForChat = useMemo(
+    () => allTerminals[chatId] || [],
+    [allTerminals, chatId],
+  )
+  const activeIdForChat = useMemo(
+    () => allActiveIds[chatId] || null,
+    [allActiveIds, chatId],
+  )
+  const activeTerminalEntity = useMemo(() => {
+    const t = terminalsForChat.find((x) => x.id === activeIdForChat)
+    return t ? { paneId: t.paneId, name: t.name } : null
+  }, [terminalsForChat, activeIdForChat])
+
+  // Widget ↔ panel mutex keyed on the *active* terminal's paneId. When the
+  // active terminal is promoted to a dockview tab, the widget summary
+  // collapses to a "Bring back to summary" stub. PTYs are preserved by the
+  // serialize/detach lifecycle in [terminal.tsx].
+  const widgetPanel = useWidgetPanel("terminal", {
+    kind: "terminal",
+    data: {
+      paneId: activeTerminalEntity?.paneId ?? "__none__",
+      name: activeTerminalEntity?.name ?? "Terminal",
+      chatId,
+      cwd,
+      workspaceId,
+    },
+  })
+
+  const handleExpand = useCallback(() => {
+    if (!activeTerminalEntity) return
+    if (widgetPanel.available) {
+      widgetPanel.openAsPanel()
+    } else {
+      onExpand?.()
+    }
+  }, [activeTerminalEntity, widgetPanel, onExpand])
+
   // Theme detection for terminal background
   const { resolvedTheme } = useTheme()
   const isDark = resolvedTheme === "dark"
@@ -89,17 +150,10 @@ export const TerminalWidget = memo(function TerminalWidget({
     return getDefaultTerminalBg(isDark)
   }, [isDark, fullThemeData])
 
-  // Get terminals for this chat
-  const terminals = useMemo(
-    () => allTerminals[chatId] || [],
-    [allTerminals, chatId],
-  )
-
-  const activeTerminalId = useMemo(
-    () => allActiveIds[chatId] || null,
-    [allActiveIds, chatId],
-  )
-
+  // Aliases — declared earlier as terminalsForChat / activeIdForChat for
+  // mutex setup; reuse them under the names the rest of this component uses.
+  const terminals = terminalsForChat
+  const activeTerminalId = activeIdForChat
   const activeTerminal = useMemo(
     () => terminals.find((t) => t.id === activeTerminalId) || null,
     [terminals, activeTerminalId],
@@ -152,32 +206,59 @@ export const TerminalWidget = memo(function TerminalWidget({
     [setAllActiveIds],
   )
 
+  // Confirm-on-destructive-close. Closing any terminal kills its PTY (and
+  // any running command with it), so each of the three close paths below
+  // queues a pending confirmation instead of acting immediately. The
+  // dispatcher captures an `apply` closure so the dialog handler doesn't
+  // need to know which path it came from. Cancel resets the state.
+  const [pendingConfirm, setPendingConfirm] = useState<{
+    title: string
+    description: ReactNode
+    apply: () => void
+  } | null>(null)
+
+  const requestConfirm = useCallback(
+    (title: string, description: ReactNode, apply: () => void) => {
+      setPendingConfirm({ title, description, apply })
+    },
+    [],
+  )
+
   const closeTerminal = useCallback(
     (id: string) => {
-      const currentChatId = chatIdRef.current
-      const currentTerminals = terminalsRef.current
-      const currentActiveId = activeTerminalIdRef.current
-
-      const terminal = currentTerminals.find((t) => t.id === id)
+      const terminal = terminalsRef.current.find((t) => t.id === id)
       if (!terminal) return
+      requestConfirm(
+        "Close terminal",
+        <>
+          Closing{" "}
+          <span className="font-medium text-foreground">{terminal.name}</span>{" "}
+          will kill any running commands.
+        </>,
+        () => {
+          const currentChatId = chatIdRef.current
+          const currentTerminals = terminalsRef.current
+          const currentActiveId = activeTerminalIdRef.current
 
-      killMutation.mutate({ paneId: terminal.paneId })
+          killMutation.mutate({ paneId: terminal.paneId })
 
-      const newTerminals = currentTerminals.filter((t) => t.id !== id)
-      setAllTerminals((prev) => ({
-        ...prev,
-        [currentChatId]: newTerminals,
-      }))
+          const newTerminals = currentTerminals.filter((t) => t.id !== id)
+          setAllTerminals((prev) => ({
+            ...prev,
+            [currentChatId]: newTerminals,
+          }))
 
-      if (currentActiveId === id) {
-        const newActive = newTerminals[newTerminals.length - 1]?.id || null
-        setAllActiveIds((prev) => ({
-          ...prev,
-          [currentChatId]: newActive,
-        }))
-      }
+          if (currentActiveId === id) {
+            const newActive = newTerminals[newTerminals.length - 1]?.id || null
+            setAllActiveIds((prev) => ({
+              ...prev,
+              [currentChatId]: newActive,
+            }))
+          }
+        },
+      )
     },
-    [setAllTerminals, setAllActiveIds, killMutation],
+    [requestConfirm, setAllTerminals, setAllActiveIds, killMutation],
   )
 
   const renameTerminal = useCallback(
@@ -195,61 +276,82 @@ export const TerminalWidget = memo(function TerminalWidget({
 
   const closeOtherTerminals = useCallback(
     (id: string) => {
-      const currentChatId = chatIdRef.current
-      const currentTerminals = terminalsRef.current
+      const others = terminalsRef.current.filter((t) => t.id !== id)
+      if (others.length === 0) return
+      requestConfirm(
+        "Close other terminals",
+        <>
+          Closing {others.length} other terminal
+          {others.length === 1 ? "" : "s"} will kill any running commands.
+        </>,
+        () => {
+          const currentChatId = chatIdRef.current
+          const currentTerminals = terminalsRef.current
 
-      currentTerminals.forEach((terminal) => {
-        if (terminal.id !== id) {
-          killMutation.mutate({ paneId: terminal.paneId })
-        }
-      })
+          currentTerminals.forEach((terminal) => {
+            if (terminal.id !== id) {
+              killMutation.mutate({ paneId: terminal.paneId })
+            }
+          })
 
-      const remainingTerminal = currentTerminals.find((t) => t.id === id)
-      setAllTerminals((prev) => ({
-        ...prev,
-        [currentChatId]: remainingTerminal ? [remainingTerminal] : [],
-      }))
+          const remainingTerminal = currentTerminals.find((t) => t.id === id)
+          setAllTerminals((prev) => ({
+            ...prev,
+            [currentChatId]: remainingTerminal ? [remainingTerminal] : [],
+          }))
 
-      setAllActiveIds((prev) => ({
-        ...prev,
-        [currentChatId]: id,
-      }))
+          setAllActiveIds((prev) => ({
+            ...prev,
+            [currentChatId]: id,
+          }))
+        },
+      )
     },
-    [setAllTerminals, setAllActiveIds, killMutation],
+    [requestConfirm, setAllTerminals, setAllActiveIds, killMutation],
   )
 
   const closeTerminalsToRight = useCallback(
     (id: string) => {
-      const currentChatId = chatIdRef.current
       const currentTerminals = terminalsRef.current
-
       const index = currentTerminals.findIndex((t) => t.id === id)
       if (index === -1) return
-
-      const terminalsToClose = currentTerminals.slice(index + 1)
-      terminalsToClose.forEach((terminal) => {
-        killMutation.mutate({ paneId: terminal.paneId })
-      })
-
-      const remainingTerminals = currentTerminals.slice(0, index + 1)
-      setAllTerminals((prev) => ({
-        ...prev,
-        [currentChatId]: remainingTerminals,
-      }))
-
-      const currentActiveId = activeTerminalIdRef.current
-      if (
-        currentActiveId &&
-        !remainingTerminals.find((t) => t.id === currentActiveId)
-      ) {
-        setAllActiveIds((prev) => ({
-          ...prev,
-          [currentChatId]:
-            remainingTerminals[remainingTerminals.length - 1]?.id || null,
-        }))
-      }
+      const toClose = currentTerminals.slice(index + 1)
+      if (toClose.length === 0) return
+      requestConfirm(
+        "Close terminals to the right",
+        <>
+          Closing {toClose.length} terminal
+          {toClose.length === 1 ? "" : "s"} will kill any running commands.
+        </>,
+        () => {
+          const currentChatId = chatIdRef.current
+          const fresh = terminalsRef.current
+          const freshIndex = fresh.findIndex((t) => t.id === id)
+          if (freshIndex === -1) return
+          const terminalsToClose = fresh.slice(freshIndex + 1)
+          terminalsToClose.forEach((terminal) => {
+            killMutation.mutate({ paneId: terminal.paneId })
+          })
+          const remainingTerminals = fresh.slice(0, freshIndex + 1)
+          setAllTerminals((prev) => ({
+            ...prev,
+            [currentChatId]: remainingTerminals,
+          }))
+          const currentActiveId = activeTerminalIdRef.current
+          if (
+            currentActiveId &&
+            !remainingTerminals.find((t) => t.id === currentActiveId)
+          ) {
+            setAllActiveIds((prev) => ({
+              ...prev,
+              [currentChatId]:
+                remainingTerminals[remainingTerminals.length - 1]?.id || null,
+            }))
+          }
+        },
+      )
     },
-    [setAllTerminals, setAllActiveIds, killMutation],
+    [requestConfirm, setAllTerminals, setAllActiveIds, killMutation],
   )
 
   // Auto-create first terminal when section is rendered and no terminals exist
@@ -268,7 +370,56 @@ export const TerminalWidget = memo(function TerminalWidget({
     return () => clearTimeout(timer)
   }, [])
 
+  // Confirm dialog rendered next to whichever branch is active so the
+  // pending state stays alive across the promote-to-panel transition.
+  const confirmDialog = (
+    <AlertDialog
+      open={!!pendingConfirm}
+      onOpenChange={(open) => {
+        if (!open) setPendingConfirm(null)
+      }}
+    >
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>{pendingConfirm?.title}</AlertDialogTitle>
+        </AlertDialogHeader>
+        <AlertDialogDescription className="px-5 pb-5">
+          {pendingConfirm?.description}
+        </AlertDialogDescription>
+        <AlertDialogFooter>
+          <AlertDialogCancel onClick={() => setPendingConfirm(null)}>
+            Cancel
+          </AlertDialogCancel>
+          <AlertDialogAction
+            autoFocus
+            onClick={() => {
+              const apply = pendingConfirm?.apply
+              setPendingConfirm(null)
+              apply?.()
+            }}
+          >
+            Close
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+  )
+
+  // Promoted to a dockview panel — render the stub instead of the summary.
+  if (widgetPanel.isOpen) {
+    return (
+      <>
+        <PromotedToPanelStub
+          label="Terminal"
+          onReturnToSummary={widgetPanel.closePanel}
+        />
+        {confirmDialog}
+      </>
+    )
+  }
+
   return (
+    <>
     <div className="mx-2 mb-2">
       <div className={cn("rounded-lg border border-border/50 overflow-hidden")}>
         {/* Widget Header with Tabs - like terminal-sidebar.tsx */}
@@ -311,14 +462,14 @@ export const TerminalWidget = memo(function TerminalWidget({
             <TooltipContent side="bottom">New terminal</TooltipContent>
           </Tooltip>
 
-          {/* Expand to sidebar button */}
-          {onExpand && (
+          {/* Expand to sidebar / panel button */}
+          {(onExpand || widgetPanel.available) && (
             <Tooltip>
               <TooltipTrigger asChild>
                 <Button
                   variant="ghost"
                   size="icon"
-                  onClick={onExpand}
+                  onClick={handleExpand}
                   className="h-5 w-5 p-0 hover:bg-foreground/10 text-muted-foreground hover:text-foreground rounded-md opacity-0 group-hover:opacity-100 transition-[background-color,opacity,transform] duration-150 ease-out active:scale-[0.97] flex-shrink-0"
                   aria-label="Expand terminal"
                 >
@@ -362,5 +513,7 @@ export const TerminalWidget = memo(function TerminalWidget({
         </div>
       </div>
     </div>
+    {confirmDialog}
+    </>
   )
 })

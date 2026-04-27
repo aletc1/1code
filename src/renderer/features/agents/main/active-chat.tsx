@@ -89,10 +89,7 @@ import { DiffFullPageView } from "../../changes/components/diff-full-page-view"
 import { DiffSidebarHeader } from "../../changes/components/diff-sidebar-header"
 import { usePushAction } from "../../changes/hooks/use-push-action"
 import { getStatusIndicator } from "../../changes/utils/status"
-import {
-  detailsSidebarOpenAtom,
-  unifiedSidebarEnabledAtom,
-} from "../../details-sidebar/atoms"
+import { detailsSidebarOpenAtom } from "../../details-sidebar/atoms"
 import { DetailsSidebar } from "../../details-sidebar/details-sidebar"
 import { FileViewerSidebar } from "../../file-viewer"
 import { FileSearchDialog } from "../../file-viewer/components/file-search-dialog"
@@ -226,13 +223,17 @@ import { AgentToolRegistry } from "../ui/agent-tool-registry"
 import { isPlanFile } from "../ui/agent-tool-utils"
 import { AgentUserMessageBubble } from "../ui/agent-user-message-bubble"
 import { AgentUserQuestion, type AgentUserQuestionHandle } from "../ui/agent-user-question"
-import { AgentsHeaderControls } from "../ui/agents-header-controls"
+// AgentsHeaderControls (the open-sidebar toggle) lives in the dockview group
+// left actions now — see [dock-header-left-actions.tsx].
 import { ChatTitleEditor } from "../ui/chat-title-editor"
 import { MobileChatHeader } from "../ui/mobile-chat-header"
 import { QuickCommentInput } from "../ui/quick-comment-input"
-import { SubChatSelector } from "../ui/sub-chat-selector"
+// SubChatSelector removed — sub-chat tabs are dockview tabs now (see
+// [chat-panel.tsx]). The component file is kept because the agents-subchats
+// sidebar still uses parts of its rename/context-menu UX.
 import { SubChatStatusCard } from "../ui/sub-chat-status-card"
-import { SplitViewContainer, SplitDropZone } from "../ui/split-view-container"
+// SplitViewContainer / SplitDropZone removed — dockview groups now own
+// multi-pane chat layout. Drag a chat tab to a group's edge to split.
 import { TextSelectionPopover } from "../ui/text-selection-popover"
 import { autoRenameAgentChat } from "../utils/auto-rename"
 import { generateCommitToPrMessage, generatePrMessage, generateReviewMessage } from "../utils/pr-message"
@@ -1945,7 +1946,10 @@ const DiffSidebarRenderer = memo(function DiffSidebarRenderer({
 
 // Inner chat component - only rendered when chat object is ready
 // Memoized to prevent re-renders when parent state changes (e.g., selectedFilePath)
-const ChatViewInner = memo(function ChatViewInner({
+//
+// Exported so the dockview ChatPanel can mount one ChatViewInner per sub-chat
+// (each sub-chat is a first-class dockview tab now — see [chat-panel.tsx]).
+export const ChatViewInner = memo(function ChatViewInner({
   chat,
   subChatId,
   parentChatId,
@@ -4927,6 +4931,7 @@ export function ChatView({
   onOpenDiff,
   onOpenTerminal,
   hideHeader = false,
+  subChatIdOverride,
 }: {
   chatId: string
   isSidebarOpen: boolean
@@ -4939,11 +4944,19 @@ export function ChatView({
   onOpenDiff?: () => void
   onOpenTerminal?: () => void
   hideHeader?: boolean
+  /** When set, this ChatView renders THIS specific sub-chat instead of
+   *  whatever is currently `activeSubChatId` in the store. Used by
+   *  ChatPanel so each dockview tab shows its own sub-chat content. */
+  subChatIdOverride?: string
 }) {
   const [selectedTeamId] = useAtom(selectedTeamIdAtom)
 
-  // Get active sub-chat ID from store for mode tracking (reactive)
-  const activeSubChatIdForMode = useAgentSubChatStore((state) => state.activeSubChatId)
+  // Get active sub-chat ID from store for mode tracking (reactive). When the
+  // ChatView is mounted inside a specific dockview tab (ChatPanel),
+  // `subChatIdOverride` pins the rendered sub-chat to this tab's id so each
+  // visible panel shows its own conversation regardless of global focus.
+  const activeSubChatIdFromStoreForMode = useAgentSubChatStore((state) => state.activeSubChatId)
+  const activeSubChatIdForMode = subChatIdOverride ?? activeSubChatIdFromStoreForMode
   // Use per-subChat mode atom - falls back to "agent" if no active sub-chat
   const subChatModeAtom = useMemo(
     () => subChatModeAtomFamily(activeSubChatIdForMode || ""),
@@ -4987,8 +5000,10 @@ export function ChatView({
     [chatId],
   )
   const [isDiffSidebarOpen, setIsDiffSidebarOpen] = useAtom(diffSidebarAtom)
-  // Subscribe to activeSubChatId for plan sidebar (needs to update when switching sub-chats)
-  const activeSubChatIdForPlan = useAgentSubChatStore((state) => state.activeSubChatId)
+  // Subscribe to activeSubChatId for plan sidebar (needs to update when switching sub-chats).
+  // Same override as above — pinned by ChatPanel when this ChatView is per-tab.
+  const activeSubChatIdFromStoreForPlan = useAgentSubChatStore((state) => state.activeSubChatId)
+  const activeSubChatIdForPlan = subChatIdOverride ?? activeSubChatIdFromStoreForPlan
 
   // Per-subChat plan sidebar state - each sub-chat remembers its own open/close state
   const planSidebarAtom = useMemo(
@@ -5014,7 +5029,6 @@ export function ChatView({
   const [fileSearchOpen, setFileSearchOpen] = useAtom(fileSearchDialogOpenAtom)
 
   // Details sidebar state (unified sidebar that combines all right sidebars)
-  const isUnifiedSidebarEnabled = useAtomValue(unifiedSidebarEnabledAtom)
   const [isDetailsSidebarOpen, setIsDetailsSidebarOpen] = useAtom(detailsSidebarOpenAtom)
 
   // Resolved hotkeys for tooltips
@@ -5375,7 +5389,7 @@ export function ChatView({
 
   // Get sub-chat state from store (reactive subscription for tabsToRender)
   const {
-    activeSubChatId,
+    activeSubChatId: activeSubChatIdFromStore,
     openSubChatIds,
     pinnedSubChatIds,
     allSubChats,
@@ -5389,6 +5403,11 @@ export function ChatView({
       splitPaneIds: state.splitPaneIds,
     }))
   )
+  // Override the rendered active sub-chat when ChatView is mounted inside a
+  // per-tab ChatPanel — see [chat-panel.tsx]. The store value still drives
+  // the right-rail widgets / hotkeys (which want the globally-focused chat),
+  // but the body of THIS ChatView renders the sub-chat its tab represents.
+  const activeSubChatId = subChatIdOverride ?? activeSubChatIdFromStore
   const [subChatProviderOverrides, setSubChatProviderOverrides] = useAtom(
     subChatProviderOverridesAtom,
   )
@@ -5706,35 +5725,25 @@ export function ChatView({
     mergePrMutation.mutate({ chatId, method: "squash" })
   }, [chatId, mergePrMutation])
 
-  // Restore archived workspace mutation (silent - no toast)
-  const restoreWorkspaceMutation = trpc.chats.restore.useMutation({
-    onSuccess: (restoredChat) => {
-      if (restoredChat) {
-        // Update the main chat list cache
-        trpcUtils.chats.list.setData({}, (oldData) => {
-          if (!oldData) return [restoredChat]
-          if (oldData.some((c) => c.id === restoredChat.id)) return oldData
-          return [restoredChat, ...oldData]
-        })
-      }
-      // Invalidate both lists to refresh
-      trpcUtils.chats.list.invalidate()
-      trpcUtils.chats.listArchived.invalidate()
-      // Invalidate this chat's data to update isArchived state
-      utils.agents.getAgentChat.invalidate({ chatId })
-    },
-  })
-
+  // Restore-archived-workspace was removed alongside chat history (see
+  // commit dropping `chats.listArchived` / `chats.restore` /
+  // `chats.deleteAllArchived`). The Restore button + ⇧⌘E hotkey + the
+  // archived-chat banner all still call `handleRestoreWorkspace`, but
+  // those code paths are only reachable in edge cases (the chats list
+  // filters archived workspaces out, so a user can't land on one
+  // through the sidebar). Surface a toast if it ever fires so we don't
+  // silently swallow the click.
   const handleRestoreWorkspace = useCallback(() => {
-    restoreWorkspaceMutation.mutate({ id: chatId })
-  }, [chatId, restoreWorkspaceMutation])
+    toast.info("Restoring archived workspaces is no longer supported.", {
+      position: "top-center",
+    })
+  }, [])
 
   // Delete archived workspace mutation
   const [confirmDeleteWorkspaceOpen, setConfirmDeleteWorkspaceOpen] = useState(false)
   const deleteWorkspaceMutation = trpc.chats.delete.useMutation({
     onSuccess: () => {
       trpcUtils.chats.list.invalidate()
-      trpcUtils.chats.listArchived.invalidate()
       setSelectedChatId(null)
     },
   })
@@ -5889,24 +5898,32 @@ export function ChatView({
       // Desktop: use new getParsedDiff endpoint (all-in-one: parsing + file contents)
       if (worktreePath && chatId) {
         const result = await trpcClient.chats.getParsedDiff.query({ chatId })
+        // Defensive: `files` should always be present per the procedure
+        // contract, but a stale gitCache entry from a previous response
+        // shape (or an unexpected error path) was crashing here. Treat
+        // missing arrays as empty.
+        const files = result?.files ?? []
+        const fileContents = result?.fileContents ?? {}
+        const totalAdditions = result?.totalAdditions ?? 0
+        const totalDeletions = result?.totalDeletions ?? 0
 
-        if (result.files.length > 0) {
+        if (files.length > 0) {
           // Store parsed files directly (already parsed on server)
-          setParsedFileDiffs(result.files)
+          setParsedFileDiffs(files)
 
           // Store prefetched file contents
-          setPrefetchedFileContents(result.fileContents)
+          setPrefetchedFileContents(fileContents)
 
           // Set diff content to null since we have parsed files
           // (AgentDiffView will use parsedFileDiffs when available)
           setDiffContent(null)
 
           setDiffStats({
-            fileCount: result.files.length,
-            additions: result.totalAdditions,
-            deletions: result.totalDeletions,
+            fileCount: files.length,
+            additions: totalAdditions,
+            deletions: totalDeletions,
             isLoading: false,
-            hasChanges: result.files.length > 0,
+            hasChanges: files.length > 0,
           })
         } else {
           setDiffStats({
@@ -6367,13 +6384,20 @@ Make sure to preserve all functionality from both branches when resolving confli
     diffViewRef.current?.markAllUnviewed()
   }, [])
 
-  // Initialize store when chat data loads
+  // Initialize store when chat data loads. Each WorkspaceDockShell stays
+  // mounted across workspace switches (so terminals / chat streams
+  // survive), which means several ChatViews from different workspaces can
+  // exist simultaneously. Only the *active* workspace's ChatView should
+  // touch the global sub-chat store — otherwise inactive workspaces would
+  // clobber the active one's slice.
   useEffect(() => {
     if (!agentChat) return
+    if (chatId !== selectedChatId) return
 
     const store = useAgentSubChatStore.getState()
 
-    // Only initialize if chatId changed
+    // setChatId is also driven by agents-layout's top-level effect; this
+    // local guard is a belt-and-braces check.
     if (store.chatId !== chatId) {
       store.setChatId(chatId)
     }
@@ -6452,7 +6476,7 @@ Make sure to preserve all functionality from both branches when resolving confli
         freshState.setActiveSubChat(validOpenIds[0])
       }
     }
-  }, [agentChat, chatId])
+  }, [agentChat, chatId, selectedChatId])
 
   // Auto-detect plan path from ACTIVE sub-chat messages when sub-chat changes
   // This ensures the plan sidebar shows the correct plan for the active sub-chat only
@@ -7448,7 +7472,7 @@ Make sure to preserve all functionality from both branches when resolving confli
         !e.ctrlKey &&
         e.code === "KeyE"
       ) {
-        if (isArchived && !restoreWorkspaceMutation.isPending) {
+        if (isArchived) {
           e.preventDefault()
           e.stopPropagation()
           handleRestoreWorkspace()
@@ -7458,7 +7482,7 @@ Make sure to preserve all functionality from both branches when resolving confli
 
     window.addEventListener("keydown", handleKeyDown, true)
     return () => window.removeEventListener("keydown", handleKeyDown, true)
-  }, [isArchived, restoreWorkspaceMutation.isPending, handleRestoreWorkspace])
+  }, [isArchived, handleRestoreWorkspace])
 
   // Handle auto-rename for sub-chat and parent chat
   // Receives subChatId as param to avoid stale closure issues
@@ -7641,30 +7665,13 @@ Make sure to preserve all functionality from both branches when resolving confli
                     />
                   ) : (
                     <>
-                      {/* Header controls - desktop only */}
-                      <AgentsHeaderControls
-                        isSidebarOpen={isSidebarOpen}
-                        onToggleSidebar={onToggleSidebar}
-                        hasUnseenChanges={hasAnyUnseenChanges}
-                        isSubChatsSidebarOpen={
-                          subChatsSidebarMode === "sidebar"
-                        }
-                      />
-                      <SubChatSelector
-                        onCreateNew={handleCreateNewSubChat}
-                        isMobile={false}
-                        onBackToChats={onBackToChats}
-                        onOpenPreview={onOpenPreview}
-                        canOpenPreview={canOpenPreview}
-                        onOpenDiff={canOpenDiff ? () => setIsDiffSidebarOpen(true) : undefined}
-                        canOpenDiff={canShowDiffButton}
-                        isDiffSidebarOpen={isDiffSidebarOpen}
-                        diffStats={diffStats}
-                        onOpenTerminal={() => setIsTerminalSidebarOpen(true)}
-                        canOpenTerminal={!!worktreePath}
-                        isTerminalOpen={isTerminalSidebarOpen}
-                        chatId={chatId}
-                      />
+                      {/* Header controls (open-sidebar toggle) and the
+                       * SubChatSelector tab strip both moved to the dockview
+                       * group header — left actions for the sidebar toggle
+                       * (see [dock-header-left-actions.tsx]) and dockview's
+                       * own tab strip for the sub-chat list. The internal
+                       * strip used to compete visually with dockview's own
+                       * row. */}
                       {/* Open Locally button - desktop only, sandbox mode */}
                       {showOpenLocally && (
                         <Tooltip delayDuration={500}>
@@ -7741,61 +7748,8 @@ Make sure to preserve all functionality from both branches when resolving confli
                       </span>
                     </PreviewSetupHoverCard>
                   ))}
-                {/* Overview/Terminal Button - shows when sidebar is closed and worktree/sandbox exists (desktop only) */}
-                {!isMobileFullscreen &&
-                  (worktreePath || sandboxId) && (
-                    isUnifiedSidebarEnabled ? (
-                      // Details button for unified sidebar
-                      !isDetailsSidebarOpen && (
-                        <Tooltip delayDuration={500}>
-                          <TooltipTrigger asChild>
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              onClick={() => setIsDetailsSidebarOpen(true)}
-                              className="h-6 w-6 p-0 hover:bg-foreground/10 transition-colors text-foreground flex-shrink-0 rounded-md ml-2"
-                              aria-label="View details"
-                              style={{
-                                // @ts-expect-error - WebKit-specific property
-                                WebkitAppRegion: "no-drag",
-                              }}
-                            >
-                              <IconOpenSidebarRight className="h-4 w-4" />
-                            </Button>
-                          </TooltipTrigger>
-                          <TooltipContent side="bottom">
-                            View details
-                            {toggleDetailsHotkey && <Kbd>{toggleDetailsHotkey}</Kbd>}
-                          </TooltipContent>
-                        </Tooltip>
-                      )
-                    ) : (
-                      // Terminal button for legacy sidebars
-                      !isTerminalSidebarOpen && (
-                        <Tooltip delayDuration={500}>
-                          <TooltipTrigger asChild>
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              onClick={() => setIsTerminalSidebarOpen(true)}
-                              className="h-6 w-6 p-0 hover:bg-foreground/10 transition-colors text-foreground flex-shrink-0 rounded-md ml-2"
-                              aria-label="Open terminal"
-                              style={{
-                                // @ts-expect-error - WebKit-specific property
-                                WebkitAppRegion: "no-drag",
-                              }}
-                            >
-                              <TerminalSquare className="h-4 w-4" />
-                            </Button>
-                          </TooltipTrigger>
-                          <TooltipContent side="bottom">
-                            Open terminal
-                            {toggleTerminalHotkey && <Kbd>{toggleTerminalHotkey}</Kbd>}
-                          </TooltipContent>
-                        </Tooltip>
-                      )
-                    )
-                  )}
+                {/* Details / Terminal toggle moved to the dockview group right
+                 * actions (see dock-header-actions.tsx). */}
                 {/* Restore Button - shows when viewing archived workspace (desktop only) */}
                 {!isMobileFullscreen && isArchived && (
                   <Tooltip delayDuration={500}>
@@ -7803,7 +7757,7 @@ Make sure to preserve all functionality from both branches when resolving confli
                       <Button
                         variant="ghost"
                         onClick={handleRestoreWorkspace}
-                        disabled={restoreWorkspaceMutation.isPending || deleteWorkspaceMutation.isPending}
+                        disabled={deleteWorkspaceMutation.isPending}
                         className="h-6 px-2 gap-1.5 hover:bg-foreground/10 transition-colors text-foreground flex-shrink-0 rounded-md ml-2 flex items-center"
                         aria-label="Restore workspace"
                         style={{
@@ -7828,7 +7782,7 @@ Make sure to preserve all functionality from both branches when resolving confli
                       <Button
                         variant="ghost"
                         onClick={handleDeleteWorkspace}
-                        disabled={restoreWorkspaceMutation.isPending || deleteWorkspaceMutation.isPending}
+                        disabled={deleteWorkspaceMutation.isPending}
                         className="h-6 px-2 gap-1.5 hover:bg-red-500/10 hover:text-red-600 dark:hover:text-red-500 transition-colors text-foreground flex-shrink-0 rounded-md ml-1 flex items-center"
                         aria-label="Delete workspace"
                         style={{
@@ -7849,166 +7803,37 @@ Make sure to preserve all functionality from both branches when resolving confli
             </div>
           )}
 
-          {/* Chat Content - Keep-alive: render all open tabs, hide inactive with CSS */}
-          {tabsToRender.length > 0 && agentChat ? (
+          {/* Chat Content — only the active sub-chat is mounted here. Other
+           * open sub-chats live in their own dockview panels (see
+           * [chat-panel.tsx]); dockview groups handle splits, so the previous
+           * SplitViewContainer + keep-alive opacity tricks are gone. */}
+          {tabsToRender.length > 0 && agentChat && activeSubChatId ? (
             <div className="relative flex-1 min-h-0">
-              {/* Loading gate: prevent getOrCreateChat() from caching empty messages before data is ready */}
               {isLocalChatLoading ? (
                 <div className="flex items-center justify-center h-full">
                   <IconSpinner className="h-6 w-6 animate-spin" />
                 </div>
-              ) : splitPaneIds.length >= 2 && !!activeSubChatId && splitPaneIds.includes(activeSubChatId) ? (
-                <SplitViewContainer
-                  panes={splitPaneIds.flatMap((paneId) => {
-                    const chat = getOrCreateChat(paneId)
-                    const isFirstSubChat = getFirstSubChatId(agentSubChats) === paneId
-                    const belongsToWorkspace = agentSubChats.some(sc => sc.id === paneId) ||
-                                              allSubChats.some(sc => sc.id === paneId)
-
-                    if (!chat || !belongsToWorkspace) return []
-
-                    return [{
-                      id: paneId,
-                      content: (
-                        <div
-                          className="h-full flex flex-col"
-                          onMouseDownCapture={() => {
-                            const store = useAgentSubChatStore.getState()
-                            if (store.activeSubChatId !== paneId) {
-                              // Mouse interaction already has an explicit target in this pane.
-                              // Suppress auto-focus to avoid stealing focus from clicked controls
-                              // (e.g. model selector popover trigger) on first click.
-                              appStore.set(suppressInputFocusAtom, true)
-                              store.setActiveSubChat(paneId)
-                            }
-                          }}
-                        >
-                          <ChatViewInner
-                            chat={chat}
-                            subChatId={paneId}
-                            parentChatId={chatId}
-                            provider={inferProviderFromMessages(paneId)}
-                            isFirstSubChat={isFirstSubChat}
-                            onAutoRename={handleAutoRename}
-                            onCreateNewSubChat={handleCreateNewSubChat}
-                            onProviderChange={handleProviderChange}
-                            teamId={selectedTeamId || undefined}
-                            repository={repository}
-                            streamId={agentChatStore.getStreamId(paneId)}
-                            isMobile={isMobileFullscreen}
-                            isSubChatsSidebarOpen={subChatsSidebarMode === "sidebar"}
-                            sandboxId={sandboxId || undefined}
-                            projectPath={worktreePath || undefined}
-                            isArchived={isArchived}
-                            onRestoreWorkspace={handleRestoreWorkspace}
-                            existingPrUrl={agentChat?.prUrl}
-                            isActive={paneId === activeSubChatId}
-                            isSplitPane={true}
-                            workspaceName={agentChat?.name ?? null}
-                            workspaceBranch={agentChat?.branch ?? null}
-                            workspaceRepoName={(agentChat as any)?.project?.gitRepo || (agentChat as any)?.project?.name || null}
-                          />
-                        </div>
-                      )
-                    }]
-                  })}
-                  hiddenTabs={
-                    <>
-                      {tabsToRender
-                        .filter(id => !splitPaneIds.includes(id))
-                        .map(subChatId => {
-                          const chat = getOrCreateChat(subChatId)
-                          const isFirstSubChat = getFirstSubChatId(agentSubChats) === subChatId
-                          const belongsToWorkspace = agentSubChats.some(sc => sc.id === subChatId) ||
-                                                    allSubChats.some(sc => sc.id === subChatId)
-                          if (!chat || !belongsToWorkspace) return null
-                          return (
-                            <div
-                              key={subChatId}
-                              className="absolute inset-0 flex flex-col"
-                              style={{
-                                opacity: 0,
-                                pointerEvents: "none",
-                                contain: "layout style paint",
-                              }}
-                              aria-hidden
-                            >
-                              <ChatViewInner
-                                chat={chat}
-                                subChatId={subChatId}
-                                parentChatId={chatId}
-                                provider={inferProviderFromMessages(subChatId)}
-                                isFirstSubChat={isFirstSubChat}
-                                onAutoRename={handleAutoRename}
-                                onCreateNewSubChat={handleCreateNewSubChat}
-                                onProviderChange={handleProviderChange}
-                                teamId={selectedTeamId || undefined}
-                                repository={repository}
-                                streamId={agentChatStore.getStreamId(subChatId)}
-                                isMobile={isMobileFullscreen}
-                                isSubChatsSidebarOpen={subChatsSidebarMode === "sidebar"}
-                                sandboxId={sandboxId || undefined}
-                                projectPath={worktreePath || undefined}
-                                isArchived={isArchived}
-                                onRestoreWorkspace={handleRestoreWorkspace}
-                                existingPrUrl={agentChat?.prUrl}
-                                isActive={false}
-                                isSplitPane={false}
-                                workspaceName={agentChat?.name ?? null}
-                                workspaceBranch={agentChat?.branch ?? null}
-                                workspaceRepoName={(agentChat as any)?.project?.gitRepo || (agentChat as any)?.project?.name || null}
-                              />
-                            </div>
-                          )
-                        })}
-                    </>
-                  }
-                />
-              ) : (
-                <SplitDropZone>
-                {tabsToRender.map(subChatId => {
-                const chat = getOrCreateChat(subChatId)
-                const isActive = subChatId === activeSubChatId
-                const isFirstSubChat = getFirstSubChatId(agentSubChats) === subChatId
-
-                // Defense in depth: double-check workspace ownership
-                // Use agentSubChats (server data) as primary source, fall back to allSubChats for optimistic updates
-                // This fixes the race condition where allSubChats is empty after setChatId but before setAllSubChats
-                const belongsToWorkspace = agentSubChats.some(sc => sc.id === subChatId) ||
-                                          allSubChats.some(sc => sc.id === subChatId)
-
+              ) : (() => {
+                const chat = getOrCreateChat(activeSubChatId)
+                const isFirstSubChat = getFirstSubChatId(agentSubChats) === activeSubChatId
+                const belongsToWorkspace =
+                  agentSubChats.some((sc) => sc.id === activeSubChatId) ||
+                  allSubChats.some((sc) => sc.id === activeSubChatId)
                 if (!chat || !belongsToWorkspace) return null
-
                 return (
-                  <div
-                    key={subChatId}
-                    className="absolute inset-0 flex flex-col"
-                    style={{
-                      // GPU-accelerated visibility switching (нативное ощущение)
-                      // transform + opacity быстрее чем visibility для GPU
-                      transform: isActive ? "translateZ(0)" : "translateZ(0) scale(0.98)",
-                      opacity: isActive ? 1 : 0,
-                      // Prevent pointer events on hidden tabs
-                      pointerEvents: isActive ? "auto" : "none",
-                      // GPU layer hints
-                      willChange: "transform, opacity",
-                      // Изолируем layout - изменения внутри не влияют на другие табы
-                      contain: "layout style paint",
-                    }}
-                    aria-hidden={!isActive}
-                  >
+                  <div className="absolute inset-0 flex flex-col">
                     <ChatViewInner
                       chat={chat}
-                      subChatId={subChatId}
+                      subChatId={activeSubChatId}
                       parentChatId={chatId}
-                      provider={inferProviderFromMessages(subChatId)}
+                      provider={inferProviderFromMessages(activeSubChatId)}
                       isFirstSubChat={isFirstSubChat}
                       onAutoRename={handleAutoRename}
                       onCreateNewSubChat={handleCreateNewSubChat}
                       onProviderChange={handleProviderChange}
                       teamId={selectedTeamId || undefined}
                       repository={repository}
-                      streamId={agentChatStore.getStreamId(subChatId)}
+                      streamId={agentChatStore.getStreamId(activeSubChatId)}
                       isMobile={isMobileFullscreen}
                       isSubChatsSidebarOpen={subChatsSidebarMode === "sidebar"}
                       sandboxId={sandboxId || undefined}
@@ -8016,7 +7841,7 @@ Make sure to preserve all functionality from both branches when resolving confli
                       isArchived={isArchived}
                       onRestoreWorkspace={handleRestoreWorkspace}
                       existingPrUrl={agentChat?.prUrl}
-                      isActive={isActive}
+                      isActive={true}
                       isSplitPane={false}
                       workspaceName={agentChat?.name ?? null}
                       workspaceBranch={agentChat?.branch ?? null}
@@ -8024,9 +7849,7 @@ Make sure to preserve all functionality from both branches when resolving confli
                     />
                   </div>
                 )
-              })}
-                </SplitDropZone>
-              )}
+              })()}
             </div>
           ) : (
             <>
@@ -8343,47 +8166,8 @@ Make sure to preserve all functionality from both branches when resolving confli
           isDeleting={deleteWorkspaceMutation.isPending}
         />
 
-        {/* Unified Details Sidebar - combines all right sidebars into one (rightmost) */}
-        {/* Show for both local (worktreePath) and remote (sandboxId) chats */}
-        {isUnifiedSidebarEnabled && !isMobileFullscreen && (worktreePath || sandboxId) && (
-          <DetailsSidebar
-            chatId={chatId}
-            worktreePath={worktreePath}
-            planPath={currentPlanPath}
-            mode={currentMode}
-            onBuildPlan={handleApprovePlanFromSidebar}
-            planRefetchTrigger={planEditRefetchTrigger}
-            activeSubChatId={activeSubChatIdForPlan}
-            isPlanSidebarOpen={isPlanSidebarOpen && !!currentPlanPath}
-            isTerminalSidebarOpen={isTerminalSidebarOpen}
-            isDiffSidebarOpen={isDiffSidebarOpen}
-            diffDisplayMode={diffDisplayMode}
-            canOpenDiff={canOpenDiff}
-            setIsDiffSidebarOpen={setIsDiffSidebarOpen}
-            diffStats={diffStats}
-            parsedFileDiffs={parsedFileDiffs}
-            onCommit={worktreePath ? handleCommitChanges : undefined}
-            onCommitAndPush={worktreePath ? handleCommitAndPush : undefined}
-            isCommitting={isCommittingCombined}
-            gitStatus={gitStatus}
-            isGitStatusLoading={isGitStatusLoading}
-            currentBranch={branchData?.current}
-            onExpandTerminal={() => setIsTerminalSidebarOpen(true)}
-            onExpandPlan={() => setIsPlanSidebarOpen(true)}
-            onExpandDiff={() => setIsDiffSidebarOpen(true)}
-            onFileSelect={(filePath) => {
-              // Set the selected file path
-              setSelectedFilePath(filePath)
-              // Set filtered files to just this file
-              setFilteredDiffFiles([filePath])
-              // Open the diff sidebar
-              setIsDiffSidebarOpen(true)
-            }}
-            onOpenFile={setFileViewerPath}
-            remoteInfo={remoteInfo}
-            isRemoteChat={!!remoteInfo}
-          />
-        )}
+        {/* DetailsSidebar lifted out — now mounts in the gridview right rail
+            (DetailsRail), shared across all chat panels. */}
       </div>
 
       {/* Terminal Bottom Panel — renders below the main row when displayMode is "bottom" */}

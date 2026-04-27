@@ -99,35 +99,6 @@ export const widgetOrderAtomFamily = atomFamily((workspaceId: string) =>
 )
 
 // ============================================================================
-// Expanded Widget State (per workspace, runtime only - not persisted)
-// ============================================================================
-
-// Which widget is currently expanded as a separate sidebar
-// null = no widget expanded
-const expandedWidgetStorageAtom = atom<Record<string, WidgetId | null>>({})
-
-export const expandedWidgetAtomFamily = atomFamily((workspaceId: string) =>
-  atom(
-    (get) => get(expandedWidgetStorageAtom)[workspaceId] ?? null,
-    (get, set, expandedWidget: WidgetId | null) => {
-      const current = get(expandedWidgetStorageAtom)
-      set(expandedWidgetStorageAtom, {
-        ...current,
-        [workspaceId]: expandedWidget,
-      })
-    },
-  ),
-)
-
-// Expanded widget sidebar width
-export const expandedWidgetSidebarWidthAtom = atomWithStorage<number>(
-  "overview:expandedWidgetWidth",
-  500,
-  undefined,
-  { getOnInit: true },
-)
-
-// ============================================================================
 // Feature Flag & Sidebar State
 // ============================================================================
 
