@@ -5908,24 +5908,32 @@ export function ChatView({
       // Desktop: use new getParsedDiff endpoint (all-in-one: parsing + file contents)
       if (worktreePath && chatId) {
         const result = await trpcClient.chats.getParsedDiff.query({ chatId })
+        // Defensive: `files` should always be present per the procedure
+        // contract, but a stale gitCache entry from a previous response
+        // shape (or an unexpected error path) was crashing here. Treat
+        // missing arrays as empty.
+        const files = result?.files ?? []
+        const fileContents = result?.fileContents ?? {}
+        const totalAdditions = result?.totalAdditions ?? 0
+        const totalDeletions = result?.totalDeletions ?? 0
 
-        if (result.files.length > 0) {
+        if (files.length > 0) {
           // Store parsed files directly (already parsed on server)
-          setParsedFileDiffs(result.files)
+          setParsedFileDiffs(files)
 
           // Store prefetched file contents
-          setPrefetchedFileContents(result.fileContents)
+          setPrefetchedFileContents(fileContents)
 
           // Set diff content to null since we have parsed files
           // (AgentDiffView will use parsedFileDiffs when available)
           setDiffContent(null)
 
           setDiffStats({
-            fileCount: result.files.length,
-            additions: result.totalAdditions,
-            deletions: result.totalDeletions,
+            fileCount: files.length,
+            additions: totalAdditions,
+            deletions: totalDeletions,
             isLoading: false,
-            hasChanges: result.files.length > 0,
+            hasChanges: files.length > 0,
           })
         } else {
           setDiffStats({
