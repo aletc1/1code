@@ -18,6 +18,7 @@ import {
   pendingPrMessageAtom,
   pendingReviewMessageAtom,
   pendingConflictResolutionMessageAtom,
+  type SelectedCommit,
 } from "../../agents/atoms"
 import { useAgentSubChatStore } from "../../agents/stores/sub-chat-store"
 import { applyModeDefaultModel } from "../../agents/lib/model-switching"
@@ -61,8 +62,8 @@ export function DiffPanel({ params, api }: IDockviewPanelProps<DiffPanelEntity>)
   const { chatId } = params
   const cache = useAtomValue(workspaceDiffCacheAtomFamily(chatId))
   const changesPanelWidth = useAtomValue(agentsChangesPanelWidthAtom)
-  const activeTab = useAtomValue(diffActiveTabAtom)
-  const selectedCommit = useAtomValue(selectedCommitAtom)
+  const [activeTab, setActiveTab] = useAtom(diffActiveTabAtom)
+  const [selectedCommit, setSelectedCommit] = useAtom(selectedCommitAtom)
   const [diffMode, setDiffMode] = useAtom(diffViewModeAtom)
 
   const trpcUtils = trpc.useUtils()
@@ -108,6 +109,39 @@ export function DiffPanel({ params, api }: IDockviewPanelProps<DiffPanelEntity>)
     },
     [],
   )
+
+  // History tab — clicking a commit row selects it, clicking a file
+  // inside that commit picks the file path. Both feed back into atoms
+  // so AgentDiffView's parsed-diff fetch knows which commit + file to
+  // render.
+  const handleCommitSelect = useCallback(
+    (commit: SelectedCommit) => {
+      setSelectedCommit(commit)
+    },
+    [setSelectedCommit],
+  )
+  const handleCommitFileSelect = useCallback(
+    (file: ChangedFile, _commitHash: string) => {
+      setSelectedFilePath(file.path)
+    },
+    [],
+  )
+  const handleActiveTabChange = useCallback(
+    (tab: "changes" | "history") => {
+      setActiveTab(tab)
+    },
+    [setActiveTab],
+  )
+
+  // Refresh the diff cache after user-triggered commit / discard
+  // mutations inside ChangesPanel — the panel runs the mutation itself,
+  // we just kick the trpc cache so the AgentDiffView picks up the new
+  // working-tree state.
+  const handleCommitOrDiscardSuccess = useCallback(() => {
+    if (!chatId || !worktreePath) return
+    void trpcUtils.chats.getParsedDiff.invalidate({ chatId })
+    void trpcUtils.changes.getStatus.invalidate({ worktreePath })
+  }, [chatId, worktreePath, trpcUtils])
 
   // Pick a sensible default file to highlight on first paint so the diff
   // view doesn't try to render every file at once.
@@ -355,6 +389,13 @@ Make sure to preserve all functionality from both branches when resolving confli
             subChats={subChatsForFilter}
             chatId={chatId}
             selectedCommitHash={selectedCommit?.hash}
+            onCommitSelect={handleCommitSelect}
+            onCommitFileSelect={handleCommitFileSelect}
+            onActiveTabChange={handleActiveTabChange}
+            onCommitSuccess={handleCommitOrDiscardSuccess}
+            onDiscardSuccess={handleCommitOrDiscardSuccess}
+            onCreatePr={handleCreatePrDirect}
+            pushCount={gitStatus?.pushCount ?? 0}
           />
         </div>
         {/* Right: line-by-line diff for the selected file */}

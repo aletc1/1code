@@ -5725,35 +5725,25 @@ export function ChatView({
     mergePrMutation.mutate({ chatId, method: "squash" })
   }, [chatId, mergePrMutation])
 
-  // Restore archived workspace mutation (silent - no toast)
-  const restoreWorkspaceMutation = trpc.chats.restore.useMutation({
-    onSuccess: (restoredChat) => {
-      if (restoredChat) {
-        // Update the main chat list cache
-        trpcUtils.chats.list.setData({}, (oldData) => {
-          if (!oldData) return [restoredChat]
-          if (oldData.some((c) => c.id === restoredChat.id)) return oldData
-          return [restoredChat, ...oldData]
-        })
-      }
-      // Invalidate both lists to refresh
-      trpcUtils.chats.list.invalidate()
-      trpcUtils.chats.listArchived.invalidate()
-      // Invalidate this chat's data to update isArchived state
-      utils.agents.getAgentChat.invalidate({ chatId })
-    },
-  })
-
+  // Restore-archived-workspace was removed alongside chat history (see
+  // commit dropping `chats.listArchived` / `chats.restore` /
+  // `chats.deleteAllArchived`). The Restore button + ⇧⌘E hotkey + the
+  // archived-chat banner all still call `handleRestoreWorkspace`, but
+  // those code paths are only reachable in edge cases (the chats list
+  // filters archived workspaces out, so a user can't land on one
+  // through the sidebar). Surface a toast if it ever fires so we don't
+  // silently swallow the click.
   const handleRestoreWorkspace = useCallback(() => {
-    restoreWorkspaceMutation.mutate({ id: chatId })
-  }, [chatId, restoreWorkspaceMutation])
+    toast.info("Restoring archived workspaces is no longer supported.", {
+      position: "top-center",
+    })
+  }, [])
 
   // Delete archived workspace mutation
   const [confirmDeleteWorkspaceOpen, setConfirmDeleteWorkspaceOpen] = useState(false)
   const deleteWorkspaceMutation = trpc.chats.delete.useMutation({
     onSuccess: () => {
       trpcUtils.chats.list.invalidate()
-      trpcUtils.chats.listArchived.invalidate()
       setSelectedChatId(null)
     },
   })
@@ -7482,7 +7472,7 @@ Make sure to preserve all functionality from both branches when resolving confli
         !e.ctrlKey &&
         e.code === "KeyE"
       ) {
-        if (isArchived && !restoreWorkspaceMutation.isPending) {
+        if (isArchived) {
           e.preventDefault()
           e.stopPropagation()
           handleRestoreWorkspace()
@@ -7492,7 +7482,7 @@ Make sure to preserve all functionality from both branches when resolving confli
 
     window.addEventListener("keydown", handleKeyDown, true)
     return () => window.removeEventListener("keydown", handleKeyDown, true)
-  }, [isArchived, restoreWorkspaceMutation.isPending, handleRestoreWorkspace])
+  }, [isArchived, handleRestoreWorkspace])
 
   // Handle auto-rename for sub-chat and parent chat
   // Receives subChatId as param to avoid stale closure issues
@@ -7767,7 +7757,7 @@ Make sure to preserve all functionality from both branches when resolving confli
                       <Button
                         variant="ghost"
                         onClick={handleRestoreWorkspace}
-                        disabled={restoreWorkspaceMutation.isPending || deleteWorkspaceMutation.isPending}
+                        disabled={deleteWorkspaceMutation.isPending}
                         className="h-6 px-2 gap-1.5 hover:bg-foreground/10 transition-colors text-foreground flex-shrink-0 rounded-md ml-2 flex items-center"
                         aria-label="Restore workspace"
                         style={{
@@ -7792,7 +7782,7 @@ Make sure to preserve all functionality from both branches when resolving confli
                       <Button
                         variant="ghost"
                         onClick={handleDeleteWorkspace}
-                        disabled={restoreWorkspaceMutation.isPending || deleteWorkspaceMutation.isPending}
+                        disabled={deleteWorkspaceMutation.isPending}
                         className="h-6 px-2 gap-1.5 hover:bg-red-500/10 hover:text-red-600 dark:hover:text-red-500 transition-colors text-foreground flex-shrink-0 rounded-md ml-1 flex items-center"
                         aria-label="Delete workspace"
                         style={{

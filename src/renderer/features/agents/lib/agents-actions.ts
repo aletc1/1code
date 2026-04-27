@@ -253,6 +253,18 @@ const openSearchAction: AgentActionDefinition = {
   },
 }
 
+const openDiffAction: AgentActionDefinition = {
+  id: "open-diff",
+  label: "Show changes",
+  description: "Open the Changes panel for the active workspace",
+  category: "view",
+  hotkey: "cmd+d",
+  handler: async () => {
+    window.dispatchEvent(new CustomEvent("dock:open-diff"))
+    return { success: true }
+  },
+}
+
 // ============================================================================
 // ACTION REGISTRY
 // ============================================================================
@@ -263,6 +275,7 @@ export const AGENT_ACTIONS: Record<string, AgentActionDefinition> = {
   "create-new-subchat": createNewSubChatAction,
   "new-terminal": newTerminalAction,
   "open-search": openSearchAction,
+  "open-diff": openDiffAction,
   "open-settings": openSettingsAction,
   "toggle-sidebar": toggleSidebarAction,
   "toggle-chat-search": toggleChatSearchAction,

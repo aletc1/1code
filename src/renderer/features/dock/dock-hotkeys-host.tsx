@@ -33,15 +33,21 @@ export function DockHotkeysHost() {
       if (!actions.canOpenSearch) return
       actions.openSearch()
     }
+    const handleOpenDiff = () => {
+      if (!actions.canOpenDiff) return
+      actions.openDiff()
+    }
 
     window.addEventListener("dock:new-subchat", handleNewSubChat)
     window.addEventListener("dock:new-terminal", handleNewTerminal)
     window.addEventListener("dock:open-search", handleOpenSearch)
+    window.addEventListener("dock:open-diff", handleOpenDiff)
 
     return () => {
       window.removeEventListener("dock:new-subchat", handleNewSubChat)
       window.removeEventListener("dock:new-terminal", handleNewTerminal)
       window.removeEventListener("dock:open-search", handleOpenSearch)
+      window.removeEventListener("dock:open-diff", handleOpenDiff)
     }
   }, [actions])
 
