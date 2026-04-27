@@ -10,47 +10,13 @@ By [21st.dev](https://21st.dev) team
 
 ## Fork Additions
 
-Enhancements added in this fork on top of upstream:
+Major upstream-divergent work:
 
-### Workflow & UI
-
-- **Split View with Drag-to-Split** - Drag a sub-chat from the sidebar to create or extend a split-view layout; per-pane close button in the title bar
-- **Cmd+Shift+T: New Sub-Chat in Split** - Dedicated shortcut (and tooltip) that opens a new sub-chat directly into split view
-- **Sortable Sidebar** - Reorder chats in the sidebar via drag-and-drop (@dnd-kit), with a grab-cursor + grip-handle hint on hover
-- **Draggable Tab Bar** - Native HTML5 drag-and-drop on tabs with an insertion marker; split pairs stay locked
-- **Queue Reorder** - Drag to reorder queued messages before they're sent
-- **Text-Selection Copy Popover** - Copy button appears when you highlight text inside a chat message
-- **Optimistic Sub-Chat Creation** - New sub-chats appear instantly and roll back on RPC failure
-- **Per-Mode Thinking Effort** - Set Claude's thinking budget independently for Plan and Agent modes
-- **Per-Mode Default Models** - Configure a default model per mode with automatic switching on mode change
-- **Usage Statistics** - Built-in page showing Claude + Codex token and cost tracking
-- **Wider Chat Column** - Expanded chat area (max-w-4xl) for better readability
-- **Enter / Shift+Enter Swap** - Enter submits, Shift+Enter inserts a newline (matches common conventions)
-
-### Git, PRs & Worktrees
-
-- **PR Widget with Comments** - Inline PR status, comments, and details alongside the chat
-- **Branch Switcher Popover** - Switch branches from a popover in the changes panel; PR chip refreshes immediately on switch (no more 30-second polling wait)
-- **PR Auto-Refresh on Commit/Push** - PR status updates automatically when you commit or push from the app
-- **Two-Column Commit Diff** - Side-by-side diff view for commit contents
-- **Pull & Push Recovery Dialog** - When `git push` fails because the remote is ahead, a one-click dialog auto-stashes, rebases, and re-pushes instead of surfacing a raw "non-fast-forward" error
-- **Worktree Deletion Safety** - Worktrees are only removed when you explicitly opt in via the archive flow with the "Delete worktree" checkbox; project delete and app startup no longer auto-remove worktrees
-
-### Models
-
-- **Latest Claude Models** - Opus 4.7 and updated model list including the latest Claude releases
-- **Sonnet 4.6 1M Context** - Full 1M-token context for Sonnet (`sonnet[1m]`) alongside the existing Opus 1M, with an amber "1M · higher cost" badge in the selector
-- **One-Click 1M Recovery** - On rate-limit or context errors against a 1M model, the toast action becomes "Switch to \<base model\>" — one click moves the sub-chat back to the 200K variant
-- **GPT-5.4 & GPT-5.4 Mini** - Latest Codex models registered as the default; gpt-5.3-codex remains available
-
-### Stability & Polish
-
-- **Rich Tool Rendering** - Proper icons and labels for `Skill`, `ScheduleWakeup`, `EnterPlanMode`, `Cron*`, `Monitor`, `PushNotification`, `TaskOutput`/`TaskStop`, `EnterWorktree`/`ExitWorktree`, `RemoteTrigger`, and `ToolSearch` (previously rendered as plain text)
-- **Stream Wedge Timeout** - 90-second first-chunk timeout aborts and surfaces a `STREAM_WEDGE` error instead of hanging the UI indefinitely
-- **Crash Auto-Recovery** - App-root error boundary + one-shot auto-reload (10s debounce) for IPC race crashes, so you get a visible error state instead of a black screen
-- **Session Abort on Delete** - In-flight Claude sessions are aborted before their workspace is removed on project/chat/sub-chat delete
-- **Lazy Archive Popover** - Archive queries no longer fire until the popover opens, reducing startup network chatter
-- **Windows Git Path Fix** - POSIX-normalized git paths so the sidebar tree view works on Windows
+- **Refactored windowing system (dockview-based)** — every open workspace runs in its own dock instance, stacked invisibly so terminal PTYs and chat streams keep running across workspace switches. Sub-chats / terminals / files / plan / diff / search are first-class dockview tabs (drag to split, double-click to rename, per-group `[+]` / Chat / Terminal, hotkeys: `⌘T` new chat, `⌘⇧T` new terminal, `⌘P` file picker, `⌘⇧F` project search, `⌘D` Changes panel). Per-workspace layout persists across reloads.
+- **Latest models** — Claude Opus 4.7, Sonnet 4.6 with optional 1M context (`sonnet[1m]`, one-click downgrade on rate limits), plus GPT-5.4 / GPT-5.4 Mini for Codex.
+- **Per-mode model & thinking presets** — set Claude's default model and thinking budget independently for Plan and Agent modes; switches automatically when the mode changes.
+- **Usage statistics** — built-in token + cost dashboard for Claude and Codex.
+- **PR widget + git ergonomics** — inline PR comments / details next to the chat, branch-switcher popover with instant refresh (no polling wait), and a one-click push-recovery dialog (auto-stash + rebase + re-push) when the remote is ahead.
 
 ---
 
