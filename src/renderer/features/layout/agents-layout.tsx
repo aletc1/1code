@@ -146,7 +146,7 @@ function LeftRailPanel(_props: IGridviewPanelProps) {
   return (
     <div
       className="h-full w-full overflow-hidden bg-background border-r"
-      style={{ borderRightWidth: "0.5px" }}
+      style={{ borderRightWidth: "0px" }}
     >
       {isSettingsView ? (
         <SettingsSidebar />
