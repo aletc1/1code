@@ -1,11 +1,13 @@
 import { useCallback, useMemo, useRef, useState } from "react"
 import type { IDockviewPanelProps } from "dockview-react"
-import { useAtomValue } from "jotai"
+import { useAtom, useAtomValue } from "jotai"
 import { ChangesPanel } from "../../changes/changes-panel"
 import {
   AgentDiffView,
   type AgentDiffViewRef,
+  diffViewModeAtom,
 } from "../../agents/ui/agent-diff-view"
+import { DiffSidebarHeader } from "../../changes/components/diff-sidebar-header"
 import {
   workspaceDiffCacheAtomFamily,
   agentsChangesPanelWidthAtom,
@@ -43,20 +45,36 @@ import type { DiffPanelEntity } from "../atoms"
  * duplicating a couple hundred lines of mutation glue. The user can
  * commit/PR from the chat side; this panel is for *viewing* changes.
  */
-export function DiffPanel({ params }: IDockviewPanelProps<DiffPanelEntity>) {
+export function DiffPanel({ params, api }: IDockviewPanelProps<DiffPanelEntity>) {
   const { chatId } = params
   const cache = useAtomValue(workspaceDiffCacheAtomFamily(chatId))
   const changesPanelWidth = useAtomValue(agentsChangesPanelWidthAtom)
   const activeTab = useAtomValue(diffActiveTabAtom)
   const selectedCommit = useAtomValue(selectedCommitAtom)
+  const [diffMode, setDiffMode] = useAtom(diffViewModeAtom)
+
+  const trpcUtils = trpc.useUtils()
 
   const { data: chat } = trpc.chats.get.useQuery(
     { id: chatId },
     { enabled: !!chatId, staleTime: 5_000 },
   )
   const worktreePath = chat?.worktreePath ?? null
-  const sandboxId = chat?.sandboxId ?? null
-  const repository = chat?.repository ?? null
+  const sandboxId = (chat as { sandboxId?: string } | null | undefined)
+    ?.sandboxId ?? null
+  const repository = (chat as { repository?: string } | null | undefined)
+    ?.repository ?? null
+
+  const { data: branchData } = trpc.changes.getBranches.useQuery(
+    { worktreePath: worktreePath ?? "" },
+    { enabled: !!worktreePath, staleTime: 30_000 },
+  )
+
+  const { data: gitStatus, isLoading: isGitStatusLoading } =
+    trpc.changes.getStatus.useQuery(
+      { worktreePath: worktreePath ?? "" },
+      { enabled: !!worktreePath, staleTime: 5_000 },
+    )
 
   const { data: agentChat } = trpc.agents.getAgentChat.useQuery(
     { chatId } as { chatId: string },
@@ -91,6 +109,37 @@ export function DiffPanel({ params }: IDockviewPanelProps<DiffPanelEntity>) {
   }, [selectedFilePath, cache.parsedFileDiffs])
 
   const diffViewRef = useRef<AgentDiffViewRef | null>(null)
+  const [viewedCount, setViewedCount] = useState(0)
+
+  const handleClose = useCallback(() => {
+    api.close()
+  }, [api])
+
+  const handleRefresh = useCallback(() => {
+    if (!chatId) return
+    void trpcUtils.chats.getParsedDiff.invalidate({ chatId })
+    void trpcUtils.changes.getStatus.invalidate({
+      worktreePath: worktreePath ?? "",
+    })
+    void trpcUtils.changes.getBranches.invalidate({
+      worktreePath: worktreePath ?? "",
+    })
+  }, [chatId, trpcUtils, worktreePath])
+
+  const handleExpandAll = useCallback(() => {
+    diffViewRef.current?.expandAll()
+  }, [])
+  const handleCollapseAll = useCallback(() => {
+    diffViewRef.current?.collapseAll()
+  }, [])
+  const handleMarkAllViewed = useCallback(() => {
+    diffViewRef.current?.markAllViewed()
+    if (diffViewRef.current) setViewedCount(diffViewRef.current.getViewedCount())
+  }, [])
+  const handleMarkAllUnviewed = useCallback(() => {
+    diffViewRef.current?.markAllUnviewed()
+    if (diffViewRef.current) setViewedCount(diffViewRef.current.getViewedCount())
+  }, [])
 
   if (!worktreePath || !chatId) {
     return (
@@ -100,38 +149,80 @@ export function DiffPanel({ params }: IDockviewPanelProps<DiffPanelEntity>) {
     )
   }
 
+  // The Review / Create PR / Merge / Fix-conflicts callbacks are
+  // intentionally omitted — they need access to the chat transport and
+  // a fistful of mutations that this panel doesn't own. The
+  // DiffSidebarHeader treats those props as optional and just hides the
+  // matching buttons when they're undefined. Users initiate Review /
+  // PR creation from the chat surface as before; the panel is for
+  // *viewing* the diff.
   return (
-    <div className="flex h-full w-full overflow-hidden bg-background">
-      {/* Left: file list / commits */}
-      <div
-        className="h-full flex-shrink-0 border-r border-border/50"
-        style={{ width: changesPanelWidth, borderRightWidth: "0.5px" }}
-      >
-        <ChangesPanel
-          worktreePath={worktreePath}
-          activeTab={activeTab}
-          selectedFilePath={selectedFilePath}
-          onFileSelect={handleFileSelect}
-          onFileOpenPinned={() => {}}
-          subChats={subChatsForFilter}
-          chatId={chatId}
-          selectedCommitHash={selectedCommit?.hash}
-        />
-      </div>
-      {/* Right: line-by-line diff for the selected file */}
-      <div className="flex-1 min-w-0 h-full overflow-hidden">
-        <AgentDiffView
-          ref={diffViewRef}
-          chatId={chatId}
-          sandboxId={sandboxId ?? ""}
-          worktreePath={worktreePath}
-          repository={repository ?? undefined}
-          initialDiff={cache.diffContent}
-          initialParsedFiles={cache.parsedFileDiffs}
-          prefetchedFileContents={cache.prefetchedFileContents ?? {}}
-          showFooter={false}
-          initialSelectedFile={initialSelectedFile}
-        />
+    <div className="flex flex-col h-full w-full overflow-hidden bg-background">
+      <DiffSidebarHeader
+        worktreePath={worktreePath}
+        currentBranch={branchData?.current ?? ""}
+        diffStats={
+          cache.diffStats ?? {
+            isLoading: false,
+            hasChanges: false,
+            fileCount: 0,
+            additions: 0,
+            deletions: 0,
+          }
+        }
+        sidebarWidth={typeof window !== "undefined" ? window.innerWidth : 1200}
+        pushCount={gitStatus?.pushCount ?? 0}
+        pullCount={gitStatus?.pullCount ?? 0}
+        hasUpstream={gitStatus?.hasUpstream ?? true}
+        isSyncStatusLoading={isGitStatusLoading}
+        aheadOfDefault={gitStatus?.ahead ?? 0}
+        behindDefault={gitStatus?.behind ?? 0}
+        onClose={handleClose}
+        onRefresh={handleRefresh}
+        onExpandAll={handleExpandAll}
+        onCollapseAll={handleCollapseAll}
+        viewMode={diffMode}
+        onViewModeChange={setDiffMode}
+        viewedCount={viewedCount}
+        onMarkAllViewed={handleMarkAllViewed}
+        onMarkAllUnviewed={handleMarkAllUnviewed}
+        // Display-mode chrome belongs to dockview now — pass full-page so
+        // the header doesn't render its own mode-switcher buttons.
+        displayMode="full-page"
+      />
+      <div className="flex flex-1 min-h-0 overflow-hidden">
+        {/* Left: file list / commits */}
+        <div
+          className="h-full flex-shrink-0 border-r border-border/50"
+          style={{ width: changesPanelWidth, borderRightWidth: "0.5px" }}
+        >
+          <ChangesPanel
+            worktreePath={worktreePath}
+            activeTab={activeTab}
+            selectedFilePath={selectedFilePath}
+            onFileSelect={handleFileSelect}
+            onFileOpenPinned={() => {}}
+            subChats={subChatsForFilter}
+            chatId={chatId}
+            selectedCommitHash={selectedCommit?.hash}
+          />
+        </div>
+        {/* Right: line-by-line diff for the selected file */}
+        <div className="flex-1 min-w-0 h-full overflow-hidden">
+          <AgentDiffView
+            ref={diffViewRef}
+            chatId={chatId}
+            sandboxId={sandboxId ?? ""}
+            worktreePath={worktreePath}
+            repository={repository ?? undefined}
+            initialDiff={cache.diffContent}
+            initialParsedFiles={cache.parsedFileDiffs}
+            prefetchedFileContents={cache.prefetchedFileContents ?? {}}
+            showFooter={false}
+            initialSelectedFile={initialSelectedFile}
+            onViewedCountChange={setViewedCount}
+          />
+        </div>
       </div>
     </div>
   )
