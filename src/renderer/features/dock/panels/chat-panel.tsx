@@ -1,7 +1,9 @@
 import { useEffect, useMemo, useState } from "react"
+import { useAtomValue } from "jotai"
 import type { IDockviewPanelProps } from "dockview-react"
 import { useAgentSubChatStore } from "../../agents/stores/sub-chat-store"
 import { AgentsContent } from "../../agents/ui/agents-content"
+import { selectedAgentChatIdAtom } from "../../agents/atoms"
 import type { ChatPanelEntity } from "../atoms"
 
 /**
@@ -42,6 +44,7 @@ export function ChatPanel({
   const [isActive, setIsActive] = useState(api.isActive)
   const setActiveSubChat = useAgentSubChatStore((s) => s.setActiveSubChat)
   const allSubChats = useAgentSubChatStore((s) => s.allSubChats)
+  const selectedWorkspaceId = useAtomValue(selectedAgentChatIdAtom)
 
   // `isVisible` (per-group) drives whether to mount AgentsContent.
   useEffect(() => {
@@ -57,14 +60,27 @@ export function ChatPanel({
     return () => sub.dispose()
   }, [api])
 
-  // When this panel becomes the global active panel, sync
+  // When this panel becomes the active panel in its dockview, sync
   // `activeSubChatId` so the rest of the app (right-rail widgets,
   // /commands, hotkeys) treats this sub-chat as the focused one.
+  //
+  // Multi-workspace caveat: every visited workspace has its own
+  // WorkspaceDockShell mounted, so multiple ChatPanels (one per
+  // workspace) can have `api.isActive=true` simultaneously — each
+  // dockview has its own focused panel. Without the workspace gate,
+  // they'd race to write the global `activeSubChatId`. Only the
+  // currently-selected workspace's chat panels should claim focus.
   useEffect(() => {
-    if (isActive) {
-      setActiveSubChat(params.subChatId)
-    }
-  }, [isActive, params.subChatId, setActiveSubChat])
+    if (!isActive) return
+    if (params.chatId !== selectedWorkspaceId) return
+    setActiveSubChat(params.subChatId)
+  }, [
+    isActive,
+    params.chatId,
+    params.subChatId,
+    selectedWorkspaceId,
+    setActiveSubChat,
+  ])
 
   // Keep the dockview tab title in sync with the sub-chat's display name.
   // The store's allSubChats array is the source of truth for names.

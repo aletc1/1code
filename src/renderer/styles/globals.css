@@ -408,6 +408,10 @@
 .dockview-theme-light .dv-pre-actions-container,
 .dockview-theme-dark .dv-pre-actions-container,
 .dockview-theme-light .dv-left-actions-container,
-.dockview-theme-dark .dv-left-actions-container {
+.dockview-theme-dark .dv-left-actions-container,
+.dockview-theme-light .dv-right-actions-container,
+.dockview-theme-dark .dv-right-actions-container,
+.dockview-theme-light .dv-void-container,
+.dockview-theme-dark .dv-void-container {
   -webkit-app-region: no-drag;
 }

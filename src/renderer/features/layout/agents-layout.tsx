@@ -508,6 +508,12 @@ export function AgentsLayout() {
     setSidebarOpen(false)
   }, [setSidebarOpen])
 
+  // Whether a system-wide view is currently overlaying the dockview.
+  // Settings / Usage / Kanban / Automations / Inbox / New Workspace
+  // all suppress the workspace surface and the right-rail widgets are
+  // workspace-scoped — so we hide the rail in those modes too.
+  const layoutSystemView = useEffectiveSystemView()
+
   // ============================================================================
   // Gridview wiring — outer 3-column shell (left rail / center / right rail).
   // Right rail is added in step 5 when DetailsSidebar is lifted out of ChatView.
@@ -643,11 +649,14 @@ export function AgentsLayout() {
         const right = api.getPanel("right-rail")
         if (right) {
           right.api.setSize({ width: initialRightWidth })
-          // Hide the rail unconditionally when there's no chat selected —
-          // its widgets ("Select a chat to see details" otherwise) are all
-          // workspace-scoped, so showing them on the New Workspace / Settings
-          // / Kanban surfaces is just empty noise.
-          right.api.setVisible(detailsOpen && !!selectedChatId)
+          // Hide the rail unconditionally when there's no chat selected
+          // OR a system view is overlaying the dockview — its widgets
+          // ("Select a chat to see details" otherwise) are all workspace-
+          // scoped, so showing them on the New Workspace / Settings /
+          // Kanban / Usage surfaces is just empty noise.
+          right.api.setVisible(
+            detailsOpen && !!selectedChatId && layoutSystemView === null,
+          )
         }
       }
 
@@ -685,20 +694,22 @@ export function AgentsLayout() {
   }, [isMobile, sidebarOpen])
 
   // Sync details rail open state with the gridview right panel. The rail
-  // is force-hidden when no chat is selected — its widgets only have
-  // meaning in a workspace, and the system-view overlay covers the whole
-  // center anyway. When `selectedChatId` becomes truthy again the rail
-  // restores to whatever the user last set via `detailsOpen`.
+  // is force-hidden when (a) no chat is selected or (b) a system view is
+  // overlaying the dockview — its widgets only have meaning while a
+  // workspace's chat is in focus. When the user navigates back to a
+  // workspace the rail restores to whatever they last set via
+  // `detailsOpen`.
   useEffect(() => {
     const api = gridApiRef.current
     if (!api) return
     const right = api.getPanel("right-rail")
     if (!right) return
-    const shouldShow = detailsOpen && !!selectedChatId
+    const shouldShow =
+      detailsOpen && !!selectedChatId && layoutSystemView === null
     if (right.api.isVisible !== shouldShow) {
       right.api.setVisible(shouldShow)
     }
-  }, [detailsOpen, selectedChatId])
+  }, [detailsOpen, selectedChatId, layoutSystemView])
 
   // The active workspace's dockApi — that's what `usePanelActions`,
   // `addOrFocus`, etc. should target. When the user switches workspaces,
