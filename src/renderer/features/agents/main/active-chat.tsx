@@ -2515,6 +2515,11 @@ export const ChatViewInner = memo(function ChatViewInner({
 
   const isStreaming = status === "streaming" || status === "submitted"
 
+  // Enter sends in an ongoing conversation; Shift+Enter sends in a fresh empty sub-chat.
+  // We're already past the chat-loading gate (ChatViewInner only mounts when !isLocalChatLoading),
+  // so messages reflects the real state on first render — no flicker between modes.
+  const submitOnEnter = messages.length > 0 || status !== "ready"
+
   // Ref for isStreaming to use in callbacks/effects that need fresh value
   const isStreamingRef = useRef(isStreaming)
   isStreamingRef.current = isStreaming
@@ -4873,6 +4878,7 @@ export const ChatViewInner = memo(function ChatViewInner({
       <ChatInputArea
         editorRef={editorRef}
         fileInputRef={fileInputRef}
+        submitOnEnter={submitOnEnter}
         onSend={handleSend}
         onForceSend={handleForceSend}
         onStop={handleStop}

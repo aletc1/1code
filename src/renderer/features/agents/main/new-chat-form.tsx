@@ -1787,10 +1787,10 @@ export function NewChatForm({
                       onContentChange={handleContentChange}
                       onSubmit={handleSend}
                       onShiftTab={toggleMode}
-                      placeholder="Plan, @ for context, / for commands"
+                      placeholder="Describe your task — Shift+Enter to send"
                       className={cn(
-                        "bg-transparent max-h-[240px] overflow-y-auto p-1",
-                        isMobileFullscreen ? "min-h-[56px]" : "min-h-[44px]",
+                        "bg-transparent max-h-[240px] overflow-y-auto p-1 transition-[min-height] duration-150",
+                        isMobileFullscreen ? "min-h-[56px]" : "min-h-[120px]",
                       )}
                       onPaste={handlePaste}
                       disabled={createChatMutation.isPending}

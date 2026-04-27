@@ -75,7 +75,8 @@ type AgentsMentionsEditorProps = {
   placeholder?: string
   className?: string
   onSubmit?: () => void
-  onForceSubmit?: () => void // Opt+Shift+Enter: bypass queue, stop stream and send immediately
+  onForceSubmit?: () => void // Force-send (bypass queue, stop stream): Opt+Shift+Enter when submitOnEnter is false, Opt+Enter when true
+  submitOnEnter?: boolean // false (default): Shift+Enter sends, Enter inserts newline. true: Enter sends, Shift+Enter inserts newline.
   disabled?: boolean
   onPaste?: (e: React.ClipboardEvent) => void
   onShiftTab?: () => void // callback for Shift+Tab (e.g., mode switching)
@@ -505,6 +506,7 @@ export const AgentsMentionsEditor = memo(
         className,
         onSubmit,
         onForceSubmit,
+        submitOnEnter,
         disabled,
         onPaste,
         onShiftTab,
@@ -1042,18 +1044,23 @@ export const AgentsMentionsEditor = memo(
           }
 
           // Prevent submission during IME composition (e.g., Chinese/Japanese/Korean input)
-          if (e.key === "Enter" && e.shiftKey && !e.nativeEvent.isComposing) {
+          if (e.key === "Enter" && !e.nativeEvent.isComposing) {
             if (triggerActive.current || slashTriggerActive.current) {
               // Let dropdown handle Enter
               return
             }
-            e.preventDefault()
-            // Opt+Shift+Enter = force submit (bypass queue, stop stream and send immediately)
-            if (e.altKey && onForceSubmit) {
-              onForceSubmit()
-            } else {
-              onSubmit?.()
+            // Send key depends on mode: Shift+Enter (default) vs Enter (when submitOnEnter is true)
+            const isSendKey = submitOnEnter ? !e.shiftKey : e.shiftKey
+            if (isSendKey) {
+              e.preventDefault()
+              // Force submit = send key + Opt (bypass queue, stop stream and send immediately)
+              if (e.altKey && onForceSubmit) {
+                onForceSubmit()
+              } else {
+                onSubmit?.()
+              }
             }
+            // else: fall through to default contenteditable newline insertion
           }
           if (e.key === "Escape") {
             // Close mention dropdown
@@ -1081,7 +1088,7 @@ export const AgentsMentionsEditor = memo(
             onShiftTab?.()
           }
         },
-        [onSubmit, onForceSubmit, onCloseTrigger, onCloseSlashTrigger, onShiftTab, restoreCursor, onContentChange, getCurrentState],
+        [onSubmit, onForceSubmit, submitOnEnter, onCloseTrigger, onCloseSlashTrigger, onShiftTab, restoreCursor, onContentChange, getCurrentState],
       )
 
       // Expose methods via ref (UNCONTROLLED pattern)
