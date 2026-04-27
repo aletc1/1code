@@ -27,8 +27,11 @@ interface ChangesPanelProps {
 	onDiscardSuccess?: () => void;
 	/** Available subchats for filtering */
 	subChats?: SubChatFilterItem[];
-	/** Currently selected subchat ID for filtering (passed from Review button) */
+	/** Currently selected subchat ID for filtering (passed from Review button)
+	 * @deprecated Filter state now lives in `filteredSubChatIdAtom`. */
 	initialSubChatFilter?: string | null;
+	/** Active sub-chat ID — drives the Scoped/All toggle and smart default. */
+	activeSubChatId?: string | null;
 	/** Chat ID for AI-generated commit messages */
 	chatId?: string;
 	/** Selected commit hash for History tab */
@@ -54,6 +57,7 @@ export function ChangesPanel({
 	onDiscardSuccess,
 	subChats,
 	initialSubChatFilter,
+	activeSubChatId,
 	chatId,
 	selectedCommitHash,
 	onCommitSelect,
@@ -82,6 +86,7 @@ export function ChangesPanel({
 				onDiscardSuccess={onDiscardSuccess}
 				subChats={subChats}
 				initialSubChatFilter={initialSubChatFilter}
+				activeSubChatId={activeSubChatId}
 				chatId={chatId}
 				selectedCommitHash={selectedCommitHash}
 				onCommitSelect={onCommitSelect}

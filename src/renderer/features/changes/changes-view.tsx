@@ -16,13 +16,14 @@ import {
 	AlertDialogTitle,
 } from "../../components/ui/alert-dialog";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "../../components/ui/tabs";
+import { ButtonGroup } from "../../components/ui/button-group";
 import { toast } from "sonner";
 import { useEffect, useState, useCallback, useRef, useMemo, memo } from "react";
 import { useAtom, useAtomValue, useSetAtom } from "jotai";
 import { trpc } from "../../lib/trpc";
 import { preferredEditorAtom } from "../../lib/atoms";
 import { APP_META } from "../../../shared/external-apps";
-import { fileViewerOpenAtomFamily, diffViewDisplayModeAtom, diffSidebarOpenAtomFamily, diffActiveTabAtom } from "../agents/atoms";
+import { fileViewerOpenAtomFamily, diffViewDisplayModeAtom, diffSidebarOpenAtomFamily, diffActiveTabAtom, filteredSubChatIdAtom } from "../agents/atoms";
 import { useChangesStore } from "../../lib/stores/changes-store";
 import { usePRStatus } from "../../hooks/usePRStatus";
 import { useFileChangeListener } from "../../lib/hooks/use-file-change-listener";
@@ -32,6 +33,7 @@ import { ChangesFileFilter, type SubChatFilterItem } from "./components/changes-
 import { CommitInput } from "./components/commit-input";
 import { HistoryView, type CommitInfo } from "./components/history-view";
 import { getStatusIndicator } from "./utils/status";
+import { matchesFilePath } from "./utils/path-match";
 import { GitPullRequest, Eye } from "lucide-react";
 import type { ChangedFile as HistoryChangedFile } from "../../../shared/changes-types";
 import { viewedFilesAtomFamily, type ViewedFileState } from "../agents/atoms";
@@ -250,8 +252,13 @@ interface ChangesViewProps {
 	onDiscardSuccess?: () => void;
 	/** Available subchats for filtering */
 	subChats?: SubChatFilterItem[];
-	/** Currently selected subchat ID for filtering (passed from Review button) */
+	/** Currently selected subchat ID for filtering (passed from Review button)
+	 * @deprecated Filter state now lives in `filteredSubChatIdAtom`. Prop is
+	 * accepted for backwards-compat but no longer drives state. */
 	initialSubChatFilter?: string | null;
+	/** ID of the currently active sub-chat (drives the Scoped/All toggle and
+	 * the smart default — Scoped if this sub-chat has tracked edits, else All). */
+	activeSubChatId?: string | null;
 	/** Chat ID for AI-generated commit messages */
 	chatId?: string;
 	/** Selected commit hash for History tab */
@@ -276,7 +283,8 @@ export function ChangesView({
 	onCommitSuccess,
 	onDiscardSuccess,
 	subChats = [],
-	initialSubChatFilter = null,
+	initialSubChatFilter: _initialSubChatFilter = null,
+	activeSubChatId = null,
 	chatId,
 	selectedCommitHash,
 	onCommitSelect,
@@ -413,7 +421,10 @@ export function ChangesView({
 		: (selectedFileState?.file ?? null);
 
 	const [fileFilter, setFileFilter] = useState("");
-	const [subChatFilter, setSubChatFilter] = useState<string | null>(initialSubChatFilter);
+	// Filter state lives in the atom so handleReview (and any other consumer)
+	// can read it. The Scoped/All toggle below writes to it; reset logic on
+	// worktreePath change applies the smart default.
+	const [subChatFilter, setSubChatFilter] = useAtom(filteredSubChatIdAtom);
 	const [internalActiveTab, setInternalActiveTab] = useState<"changes" | "history">("changes");
 	const activeTab = controlledActiveTab ?? internalActiveTab;
 	const fileListRef = useRef<HTMLDivElement>(null);
@@ -431,11 +442,6 @@ export function ChangesView({
 		}
 	}, [controlledActiveTab, onActiveTabChange, onCommitSelect]);
 
-	// Update subchat filter when initialSubChatFilter changes (e.g., from Review button)
-	useEffect(() => {
-		setSubChatFilter(initialSubChatFilter);
-	}, [initialSubChatFilter]);
-
 	// Local selection state - tracks which files are selected for commit (checkboxes)
 	const [selectedForCommit, setSelectedForCommit] = useState<Set<string>>(new Set());
 	const [hasInitializedSelection, setHasInitializedSelection] = useState(false);
@@ -445,17 +451,50 @@ export function ChangesView({
 	// Anchor for Shift+Click is the currently selected file (selectedFile) - the one showing in diff view
 	const [highlightedFiles, setHighlightedFiles] = useState<Set<string>>(new Set());
 
-	// Reset filters when worktreePath changes, but preserve initialSubChatFilter
+	// Reset transient state on chat/worktree change.
 	useEffect(() => {
 		setFileFilter("");
-		// Don't reset subChatFilter to null - use initialSubChatFilter instead
-		// This preserves the filter when component remounts (e.g., when diff sidebar opens)
-		setSubChatFilter(initialSubChatFilter);
 		setHasInitializedSelection(false);
 		setSelectedForCommit(new Set());
 		setHighlightedFiles(new Set());
 		prevAllPathsRef.current = new Set();
-	}, [worktreePath, initialSubChatFilter]);
+	}, [worktreePath]);
+
+	// Smart default for the Scoped/All toggle. Two-phase to handle async
+	// subChats arrival: on a new (worktree, activeSubChatId) pair we reset to
+	// null immediately; once `subChats` first contains the active sub-chat we
+	// promote to Scoped — but only if the user hasn't deliberately clicked the
+	// toggle in between (`userToggledRef`). Without the second phase, cold
+	// mounts default to `All` and never recover when edit data lands.
+	const filterKeyRef = useRef<string>("");
+	const filterAppliedRef = useRef(false);
+	const userToggledRef = useRef(false);
+	useEffect(() => {
+		const key = `${worktreePath ?? ""}::${activeSubChatId ?? ""}`;
+		if (filterKeyRef.current !== key) {
+			filterKeyRef.current = key;
+			filterAppliedRef.current = false;
+			userToggledRef.current = false;
+			setSubChatFilter(null);
+		}
+		if (!activeSubChatId || filterAppliedRef.current) return;
+		if (subChats.some((sc) => sc.id === activeSubChatId)) {
+			filterAppliedRef.current = true;
+			if (!userToggledRef.current) {
+				setSubChatFilter(activeSubChatId);
+			}
+		}
+	}, [worktreePath, activeSubChatId, subChats, setSubChatFilter]);
+
+	// Toggle handler for user clicks — flips userToggledRef so the smart-default
+	// effect doesn't override the deliberate choice when subChats arrives later.
+	const handleUserToggleScope = useCallback(
+		(value: string | null) => {
+			userToggledRef.current = true;
+			setSubChatFilter(value);
+		},
+		[setSubChatFilter],
+	);
 
 	// Combine all files into a flat list
 	const allFiles = useMemo(() => {
@@ -527,15 +566,13 @@ export function ChangesView({
 	const filteredFiles = useMemo(() => {
 		let result = allFiles;
 
-		// Apply subchat filter first
+		// Apply subchat filter first. Boundary-aware match — see matchesFilePath
+		// for why this isn't just endsWith (avoids "auth.ts" matching "oauth.ts").
 		if (subChatFilterPaths) {
 			result = result.filter(({ file }) =>
-				subChatFilterPaths.some(
-					(filterPath) =>
-						file.path === filterPath ||
-						file.path.endsWith(filterPath) ||
-						filterPath.endsWith(file.path)
-				)
+				subChatFilterPaths.some((filterPath) =>
+					matchesFilePath(file.path, filterPath),
+				),
 			);
 		}
 
@@ -922,6 +959,69 @@ export function ChangesView({
 
 					{/* Changes tab content */}
 					<TabsContent value="changes" className="flex-1 flex flex-col m-0 overflow-hidden data-[state=inactive]:hidden">
+						{/* Scope toggle: picks between "this chat's slice" and the full branch
+						    diff. Drives the same atom that handleReview / commit message
+						    generation read, so Claude's prompts stay in sync with what the
+						    user sees. Always visible when there's an active sub-chat — the
+						    "This chat" button shows 0 if no tool-Edit/tool-Write has been
+						    captured yet (e.g. bash-only edits, or the chat panel hasn't
+						    been mounted long enough for the message walker to run). */}
+						{activeSubChatId && (() => {
+							const isScoped = subChatFilter === activeSubChatId;
+							const scopedEntry = subChats.find((sc) => sc.id === activeSubChatId);
+							const scopedCount = scopedEntry?.fileCount ?? 0;
+							return (
+								<div className="flex items-center gap-2 px-2 py-1.5 border-b border-border/50">
+									<ButtonGroup>
+										<Tooltip>
+											<TooltipTrigger asChild>
+												<Button
+													type="button"
+													variant={isScoped ? "secondary" : "ghost"}
+													size="sm"
+													className="h-6 px-2 text-xs"
+													onClick={() => handleUserToggleScope(activeSubChatId)}
+													aria-pressed={isScoped}
+												>
+													This chat
+													<span className="ml-1.5 text-[10px] text-muted-foreground">
+														{scopedCount}
+													</span>
+												</Button>
+											</TooltipTrigger>
+											<TooltipContent side="bottom" className="max-w-[260px]">
+												{scopedCount === 0
+													? "No file edits tracked for this chat yet. Bash-only edits (mv/rm/sed/echo) aren't tracked — open this chat to populate."
+													: "Show only files this chat edited. Bash-only edits (mv/rm/sed) aren't tracked."}
+											</TooltipContent>
+										</Tooltip>
+										<Tooltip>
+											<TooltipTrigger asChild>
+												<Button
+													type="button"
+													variant={subChatFilter === null ? "secondary" : "ghost"}
+													size="sm"
+													className="h-6 px-2 text-xs"
+													onClick={() => handleUserToggleScope(null)}
+													aria-pressed={subChatFilter === null}
+												>
+													All changes
+												</Button>
+											</TooltipTrigger>
+											<TooltipContent side="bottom" className="max-w-[260px]">
+												Show every uncommitted change in the worktree.
+											</TooltipContent>
+										</Tooltip>
+									</ButtonGroup>
+									{subChatFilter && subChatFilter !== activeSubChatId && (
+										<span className="text-[10px] text-muted-foreground truncate">
+											Filtered to a different chat — see the filter row below.
+										</span>
+									)}
+								</div>
+							);
+						})()}
+
 						{/* Filter */}
 						<ChangesFileFilter
 							value={fileFilter}

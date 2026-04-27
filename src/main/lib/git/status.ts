@@ -11,6 +11,29 @@ import {
 } from "./utils/parse-status";
 import { gitCache } from "./cache";
 
+/**
+ * True for git errors that mean "this commit/object isn't in this repo"
+ * — typically because the selected commit was made on a different
+ * worktree/branch and the user has since switched. We treat these as a
+ * benign empty-result rather than a hard error: the UI was about to
+ * render a stale selection and we just want to show nothing for it.
+ *
+ * Git's standard "unknown ref" output is along the lines of
+ *   fatal: ambiguous argument 'abc': unknown revision or path not in the working tree.
+ * — so we require both "ambiguous argument" AND "unknown revision" to
+ * co-occur, otherwise legitimate ambiguity errors (a short SHA that
+ * matches multiple real commits) would be silently swallowed.
+ */
+function isUnknownRevisionError(err: unknown): boolean {
+	if (!(err instanceof Error)) return false;
+	const msg = err.message;
+	if (msg.includes("bad object")) return true;
+	if (msg.includes("Not a valid object name")) return true;
+	if (msg.includes("ambiguous argument") && msg.includes("unknown revision"))
+		return true;
+	return false;
+}
+
 export const createStatusRouter = () => {
 	return router({
 		getStatus: publicProcedure
@@ -131,6 +154,14 @@ export const createStatusRouter = () => {
 					console.log("[getCommitFiles] SUCCESS:", { filesCount: files.length });
 					return files;
 				} catch (error) {
+					// Stale commit hash from a different worktree → treat as empty.
+					if (isUnknownRevisionError(error)) {
+						console.warn("[getCommitFiles] Unknown revision in this worktree:", {
+							worktreePath: input.worktreePath,
+							commitHash: input.commitHash,
+						});
+						return [];
+					}
 					console.error("[getCommitFiles] ERROR:", {
 						error: error instanceof Error ? error.message : String(error),
 						stack: error instanceof Error ? error.stack : undefined,
@@ -171,16 +202,28 @@ export const createStatusRouter = () => {
 
 				const git = simpleGit(input.worktreePath);
 
-				// Get diff for specific file comparing commit to its parent
-				const diff = await git.raw([
-					"diff",
-					`${input.commitHash}^`,
-					input.commitHash,
-					"--",
-					input.filePath,
-				]);
+				try {
+					// Get diff for specific file comparing commit to its parent
+					const diff = await git.raw([
+						"diff",
+						`${input.commitHash}^`,
+						input.commitHash,
+						"--",
+						input.filePath,
+					]);
 
-				return diff;
+					return diff;
+				} catch (error) {
+					// Stale commit hash from a different worktree → empty diff.
+					if (isUnknownRevisionError(error)) {
+						console.warn(
+							"[getCommitFileDiff] Unknown revision in this worktree:",
+							{ worktreePath: input.worktreePath, commitHash: input.commitHash },
+						);
+						return "";
+					}
+					throw error;
+				}
 			}),
 	});
 };

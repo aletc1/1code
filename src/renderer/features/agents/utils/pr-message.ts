@@ -92,14 +92,44 @@ Please commit and push these changes to update the PR:
 }
 
 /**
- * Generates a message for Claude to perform a code review
+ * Quote a path for safe inclusion in a shell command. Single-quotes preserve
+ * everything literally; embedded single-quotes are escaped via the `'\''`
+ * trick. Sufficient for the file paths git produces.
+ *
+ * NOTE: POSIX-only quoting. The output is executed by Claude's Bash tool,
+ * which on Windows runs through Git Bash / WSL — a POSIX environment — so
+ * single-quote semantics hold. Don't reuse this for native Windows cmd.exe.
  */
-export function generateReviewMessage(context: PrContext): string {
+function shellQuote(path: string): string {
+  return `'${path.replace(/'/g, `'\\''`)}'`
+}
+
+/**
+ * Generates a message for Claude to perform a code review.
+ *
+ * When `scopedFiles` is provided and non-empty, the prompt narrows Claude to
+ * those files only — both via `git diff -- <paths>` and an explicit
+ * instruction. This is how the Scoped/All toggle in the Changes panel
+ * propagates into the actual review.
+ */
+export function generateReviewMessage(
+  context: PrContext,
+  scopedFiles?: string[],
+): string {
   const { branch, baseBranch } = context
+  const scoped = scopedFiles && scopedFiles.length > 0 ? scopedFiles : null
+
+  const diffCommand = scoped
+    ? `git diff origin/${baseBranch}... -- ${scoped.map(shellQuote).join(" ")}`
+    : `git diff origin/${baseBranch}...`
+
+  const scopeNote = scoped
+    ? `\n\n## Scope\n\nLimit your review to the following files (other changes exist on this branch but are out of scope for this review):\n${scoped.map((f) => `- ${f}`).join("\n")}\n`
+    : ""
 
   return `You are performing a code review on the changes in the current branch.
 
-The current branch is ${branch}, and the target branch is origin/${baseBranch}.
+The current branch is ${branch}, and the target branch is origin/${baseBranch}.${scopeNote}
 
 ## Code Review Instructions
 
@@ -111,7 +141,7 @@ When reviewing the diff:
 
 ## Getting the Diff
 
-Run \`git diff origin/${baseBranch}...\` to get the changes.
+Run \`${diffCommand}\` to get the changes.
 
 ## Output Format
 

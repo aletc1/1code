@@ -1176,6 +1176,9 @@ const DiffSidebarContent = memo(function DiffSidebarContent({
     resetActiveTabRef,
   } = useDiffState()
 
+  // Active sub-chat ID — drives the Scoped/All toggle in ChangesPanel.
+  const activeSubChatId = useAgentSubChatStore((s) => s.activeSubChatId)
+
   // Compute initial selected file synchronously for first render
   // This prevents AgentDiffView from rendering all files before filter kicks in
   const initialSelectedFile = useMemo(() => {
@@ -1207,6 +1210,13 @@ const DiffSidebarContent = memo(function DiffSidebarContent({
 
   // Selected commit for History tab
   const [selectedCommit, setSelectedCommit] = useAtom(selectedCommitAtom)
+
+  // Clear selectedCommit when the worktree changes — the atom is global so a
+  // commit hash from worktree A would otherwise leak into worktree B and
+  // produce "bad object" git errors when the History tab tries to load files.
+  useEffect(() => {
+    setSelectedCommit(null)
+  }, [worktreePath, setSelectedCommit])
 
   // When sidebar is narrow (< 500px), use vertical layout
   const isNarrow = sidebarWidth < 500
@@ -1332,6 +1342,7 @@ const DiffSidebarContent = memo(function DiffSidebarContent({
               onDiscardSuccess={onDiscardSuccess}
               subChats={subChats}
               initialSubChatFilter={filteredSubChatId}
+              activeSubChatId={activeSubChatId}
               chatId={chatId}
               selectedCommitHash={selectedCommit?.hash}
               onCommitSelect={handleCommitSelect}
@@ -5442,8 +5453,10 @@ export function ChatView({
   const [isCreatingPr, setIsCreatingPr] = useAtom(isCreatingPrAtom)
   // Review loading state
   const [isReviewing, setIsReviewing] = useState(false)
-  // Subchat filter setter - used by handleReview to filter by active subchat
-  const setFilteredSubChatId = useSetAtom(filteredSubChatIdAtom)
+  // Active filter scope — read in handleReview to scope Claude's prompt to
+  // the same files the user sees in the Changes panel. Driven by the
+  // Scoped/All toggle there.
+  const filteredSubChatIdValue = useAtomValue(filteredSubChatIdAtom)
   const setSessionInfo = useSetAtom(sessionInfoAtom)
 
   // Determine if we're in sandbox mode
@@ -6231,19 +6244,27 @@ export function ChatView({
         return
       }
 
-      // Set filter to show only files from the active subchat
-      if (activeSubChatId) {
-        setFilteredSubChatId(activeSubChatId)
-      }
-
       // Switch the sub-chat to the configured Review-mode model + thinking
       // before sending, mirroring the /review slash-command path.
       if (activeSubChatId) {
         applyModeDefaultModel(activeSubChatId, "review")
       }
 
+      // Honor the Scoped/All toggle in the Changes panel: if a sub-chat
+      // filter is active, narrow Claude's review to those files. Empty
+      // file lists fall back to the unscoped prompt rather than sending
+      // Claude an empty `git diff -- ` (which would diff nothing).
+      const scopedFiles = filteredSubChatIdValue
+        ? (subChatFiles.get(filteredSubChatIdValue) ?? [])
+            .map((f) => f.displayPath || f.filePath)
+            .filter((p): p is string => !!p)
+        : []
+
       // Generate review message and set it for ChatViewInner to send
-      const message = generateReviewMessage(context)
+      const message = generateReviewMessage(
+        context,
+        scopedFiles.length > 0 ? scopedFiles : undefined,
+      )
       if (activeSubChatId) {
         setPendingReviewMessage({ message, subChatId: activeSubChatId })
       }
@@ -6255,7 +6276,13 @@ export function ChatView({
     } finally {
       setIsReviewing(false)
     }
-  }, [chatId, activeSubChatId, setPendingReviewMessage, setFilteredSubChatId])
+  }, [
+    chatId,
+    activeSubChatId,
+    setPendingReviewMessage,
+    filteredSubChatIdValue,
+    subChatFiles,
+  ])
 
   // Handle Fix Conflicts - sends a message to Claude to sync with main and fix merge conflicts
   const setPendingConflictResolutionMessage = useSetAtom(pendingConflictResolutionMessageAtom)
