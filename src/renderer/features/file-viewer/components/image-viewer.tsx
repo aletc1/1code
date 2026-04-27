@@ -13,17 +13,20 @@ import { useResolvedHotkeyDisplay } from "@/lib/hotkeys"
 import { APP_META } from "../../../../shared/external-apps"
 import { EDITOR_ICONS } from "@/lib/editor-icons"
 import { getFileName } from "../utils/file-utils"
+import { FileTitleBlock } from "./file-title-block"
 
 interface ImageViewerProps {
   filePath: string
   projectPath: string
   onClose: () => void
+  showHeader?: boolean
 }
 
 export function ImageViewer({
   filePath,
   projectPath,
-  onClose: _onClose,
+  onClose,
+  showHeader = false,
 }: ImageViewerProps) {
   const fileName = getFileName(filePath)
   const preferredEditor = useAtomValue(preferredEditorAtom)
@@ -48,15 +51,16 @@ export function ImageViewer({
 
   return (
     <div className="flex flex-col h-full bg-background">
-      {/* Right-side actions only — dockview's tab provides the title +
-          close, and the tab icon already shows the file type. */}
       <div
-        className="@container flex items-center justify-end px-2 h-10 border-b border-border/50 bg-background flex-shrink-0"
+        className={`@container flex items-center ${showHeader ? "justify-between" : "justify-end"} px-2 h-10 border-b border-border/50 bg-background flex-shrink-0`}
         style={{
           // @ts-expect-error - WebKit-specific property
           WebkitAppRegion: "no-drag",
         }}
       >
+        {showHeader && (
+          <FileTitleBlock filePath={filePath} onClose={onClose} />
+        )}
         <div className="flex items-center gap-1 flex-shrink-0">
           <Tooltip delayDuration={500}>
             <TooltipTrigger asChild>

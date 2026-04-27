@@ -28,6 +28,7 @@ import {
   DropdownMenuItem,
 } from "@/components/ui/dropdown-menu"
 import { ViewerErrorBoundary } from "@/components/ui/error-boundary"
+import { FileTitleBlock } from "./file-title-block"
 import { trpc } from "@/lib/trpc"
 import { preferredEditorAtom } from "@/lib/atoms"
 import { useResolvedHotkeyDisplay } from "@/lib/hotkeys"
@@ -51,6 +52,13 @@ interface FileViewerSidebarProps {
   filePath: string
   projectPath: string
   onClose: () => void
+  /**
+   * When true, render an inline header with a close button + filename
+   * inside the viewer itself. Default false because dockview's tab strip
+   * already provides those affordances; set true when the viewer lives in
+   * a non-dockview surface (e.g. the new-workspace explorer sidebar).
+   */
+  showHeader?: boolean
 }
 
 function LoadingSpinner() {
@@ -76,16 +84,27 @@ function ErrorDisplay({ error }: { error: string }) {
 }
 
 function UnsupportedViewer({
-  filePath: _filePath,
-  onClose: _onClose,
+  filePath,
+  onClose,
+  showHeader = false,
 }: {
   filePath: string
   onClose: () => void
+  showHeader?: boolean
 }) {
-  // Header was redundant inside dockview (tab provides title + close);
-  // unsupported files are rare so we just show the placeholder body.
   return (
     <div className="flex flex-col h-full bg-background">
+      {showHeader && (
+        <div
+          className="flex items-center px-2 h-10 border-b border-border/50 bg-background flex-shrink-0"
+          style={{
+            // @ts-expect-error - WebKit-specific property
+            WebkitAppRegion: "no-drag",
+          }}
+        >
+          <FileTitleBlock filePath={filePath} onClose={onClose} />
+        </div>
+      )}
       <div className="flex-1 flex items-center justify-center p-4">
         <div className="flex flex-col items-center gap-3 text-center max-w-[300px]">
           <FileWarning className="h-10 w-10 text-muted-foreground" />
@@ -99,9 +118,13 @@ function UnsupportedViewer({
 function CodeViewerHeader({
   filePath,
   content,
+  showHeader = false,
+  onClose,
 }: {
   filePath: string
   content?: string | null
+  showHeader?: boolean
+  onClose?: () => void
 }) {
   const [wordWrap, setWordWrap] = useAtom(fileViewerWordWrapAtom)
   const [minimap, setMinimap] = useAtom(fileViewerMinimapAtom)
@@ -120,16 +143,15 @@ function CodeViewerHeader({
 
   return (
     <div
-      className="@container flex items-center justify-end px-2 h-10 border-b border-border/50 bg-background flex-shrink-0"
+      className={`@container flex items-center ${showHeader ? "justify-between" : "justify-end"} px-2 h-10 border-b border-border/50 bg-background flex-shrink-0`}
       style={{
         // @ts-expect-error - WebKit-specific property
         WebkitAppRegion: "no-drag",
       }}
     >
-      {/* Right-side actions only — dockview's tab header already provides
-          the title, the close button, and (via the tab icon) the file type.
-          The previous left-side close + mode switcher + filename block was
-          a leftover from the pre-dockview sidebar layout. */}
+      {showHeader && onClose && (
+        <FileTitleBlock filePath={filePath} onClose={onClose} />
+      )}
       <div className="flex items-center gap-1 flex-shrink-0">
         {/* Open in editor */}
         <Tooltip delayDuration={500}>
@@ -216,6 +238,7 @@ export function FileViewerSidebar({
   filePath,
   projectPath,
   onClose,
+  showHeader = false,
 }: FileViewerSidebarProps) {
   const viewerType = getFileViewerType(filePath)
 
@@ -223,21 +246,42 @@ export function FileViewerSidebar({
     case "image":
       return (
         <ViewerErrorBoundary viewerType="image" onReset={onClose}>
-          <ImageViewer filePath={filePath} projectPath={projectPath} onClose={onClose} />
+          <ImageViewer
+            filePath={filePath}
+            projectPath={projectPath}
+            onClose={onClose}
+            showHeader={showHeader}
+          />
         </ViewerErrorBoundary>
       )
     case "unsupported":
-      return <UnsupportedViewer filePath={filePath} onClose={onClose} />
+      return (
+        <UnsupportedViewer
+          filePath={filePath}
+          onClose={onClose}
+          showHeader={showHeader}
+        />
+      )
     case "markdown":
       return (
         <ViewerErrorBoundary viewerType="markdown" onReset={onClose}>
-          <MarkdownViewer filePath={filePath} projectPath={projectPath} onClose={onClose} />
+          <MarkdownViewer
+            filePath={filePath}
+            projectPath={projectPath}
+            onClose={onClose}
+            showHeader={showHeader}
+          />
         </ViewerErrorBoundary>
       )
     default:
       return (
         <ViewerErrorBoundary viewerType="file" onReset={onClose}>
-          <CodeViewer filePath={filePath} projectPath={projectPath} onClose={onClose} />
+          <CodeViewer
+            filePath={filePath}
+            projectPath={projectPath}
+            onClose={onClose}
+            showHeader={showHeader}
+          />
         </ViewerErrorBoundary>
       )
   }
@@ -357,10 +401,12 @@ function CodeViewer({
   filePath,
   projectPath,
   onClose,
+  showHeader = false,
 }: {
   filePath: string
   projectPath: string
   onClose: () => void
+  showHeader?: boolean
 }) {
   const language = getMonacoLanguage(filePath)
   const { resolvedTheme } = useTheme()
@@ -604,7 +650,7 @@ function CodeViewer({
   if (isLoading) {
     return (
       <div className="flex flex-col h-full bg-background">
-        <CodeViewerHeader filePath={filePath} />
+        <CodeViewerHeader filePath={filePath} showHeader={showHeader} onClose={onClose} />
         <LoadingSpinner />
       </div>
     )
@@ -613,7 +659,7 @@ function CodeViewer({
   if (error) {
     return (
       <div className="flex flex-col h-full bg-background">
-        <CodeViewerHeader filePath={filePath} />
+        <CodeViewerHeader filePath={filePath} showHeader={showHeader} onClose={onClose} />
         <ErrorDisplay error={getErrorMessage(error)} />
       </div>
     )
@@ -790,7 +836,7 @@ function CodeViewer({
           display: none !important;
         }
       `}</style>
-      <CodeViewerHeader filePath={filePath} content={content} />
+      <CodeViewerHeader filePath={filePath} content={content} showHeader={showHeader} onClose={onClose} />
       <div
         ref={containerRef}
         className="flex-1 min-h-0 allow-text-selection"

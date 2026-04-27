@@ -103,13 +103,19 @@ import { AgentImageItem } from "../ui/agent-image-item"
 import { AgentPastedTextItem } from "../ui/agent-pasted-text-item"
 import { AgentsHeaderControls } from "../ui/agents-header-controls"
 import { VoiceWaveIndicator } from "../ui/voice-wave-indicator"
+import { NewWorkspaceActions } from "./new-workspace-actions"
+import { NewWorkspaceExplorer } from "./new-workspace-explorer"
 // import { CreateBranchDialog } from "@/app/(alpha)/agents/{components}/create-branch-dialog"
 import {
   PromptInput,
   PromptInputActions,
   PromptInputContextItems,
 } from "../../../components/ui/prompt-input"
-import { agentsSidebarOpenAtom, agentsUnseenChangesAtom } from "../atoms"
+import {
+  agentsSidebarOpenAtom,
+  agentsUnseenChangesAtom,
+  newWorkspaceViewerFileAtom,
+} from "../atoms"
 import { AgentSendButton } from "../components/agent-send-button"
 import { AgentModelSelector } from "../components/agent-model-selector"
 import { CreateBranchDialog } from "../components/create-branch-dialog"
@@ -226,6 +232,15 @@ export function NewChatForm({
       setSelectedProject(null)
     }
   }, [selectedProject, projectsList, validatedProject, setSelectedProject])
+
+  // Drop the new-workspace explorer's open file when the project changes —
+  // its absolute path may not exist in the new repo.
+  const validatedProjectPath = validatedProject?.path ?? null
+  const setNewWorkspaceViewerFile = useSetAtom(newWorkspaceViewerFileAtom)
+  useEffect(() => {
+    setNewWorkspaceViewerFile(null)
+  }, [validatedProjectPath, setNewWorkspaceViewerFile])
+
   const [lastSelectedAgentId, setLastSelectedAgentId] = useAtom(
     lastSelectedAgentIdAtom,
   )
@@ -1702,9 +1717,22 @@ export function NewChatForm({
   }, [])
 
   return (
-    <div className="flex h-full flex-col relative">
-      {/* Header - Simple burger on mobile, AgentsHeaderControls on desktop */}
-      <div className="flex-shrink-0 flex items-center justify-between bg-background p-1.5">
+    <div className="flex h-full relative">
+      {/* Content column: hamburger + icons header on top, centered form below.
+          The sidebars (file viewer / files / search) sit alongside this column
+          and span the full surface height so their own header rows line up
+          with the new-workspace header. */}
+      <div className="flex flex-col flex-1 min-w-0">
+      {/* Header - Simple burger on mobile, AgentsHeaderControls on desktop.
+          Drag region for window — child buttons (hamburger, Explore/Search)
+          opt out via WebkitAppRegion: "no-drag" so clicks still register. */}
+      <div
+        className="flex-shrink-0 flex items-center justify-between bg-background p-1.5"
+        style={{
+          // @ts-expect-error - WebKit-specific property
+          WebkitAppRegion: "drag",
+        }}
+      >
         <div className="flex-1 min-w-0 flex items-center gap-2">
           {isMobileFullscreen ? (
             // Simple burger button for mobile - just opens chats list
@@ -1729,9 +1757,12 @@ export function NewChatForm({
             />
           )}
         </div>
+        <NewWorkspaceActions
+          visible={!isMobileFullscreen && !!validatedProjectPath}
+        />
       </div>
 
-      <div className="flex flex-1 items-center justify-center overflow-y-auto relative">
+      <div className="flex flex-1 min-w-0 items-center justify-center overflow-y-auto relative">
         <div className="w-full max-w-5xl space-y-4 md:space-y-6 relative z-10 px-4">
           {/* Title - only show when project is selected */}
           {validatedProject && (
@@ -2295,6 +2326,8 @@ export function NewChatForm({
           )}
         </div>
       </div>
+      </div>
+      <NewWorkspaceExplorer worktreePath={validatedProjectPath} />
 
       {/* Worktree config banner - fixed bottom-right corner */}
       {showWorktreeBanner && (

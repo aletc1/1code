@@ -192,7 +192,7 @@ export function SearchTab({
   return (
     <div className={cn("flex flex-col min-h-0", className)}>
       {/* Search input */}
-      <div className="px-2 py-2 border-b border-border/50">
+      <div className="px-2 pt-1.5 pb-2 border-b border-border/50">
         <div className="relative">
           <SearchIcon className="size-3 text-muted-foreground absolute left-2 top-1/2 -translate-y-1/2 pointer-events-none" />
           <input
@@ -202,7 +202,7 @@ export function SearchTab({
             onChange={(e) => setQuery(e.target.value)}
             placeholder="Search files…"
             spellCheck={false}
-            className="w-full h-7 pl-7 pr-7 text-xs rounded-md bg-muted/50 border border-transparent focus:border-border focus:outline-none focus:bg-background"
+            className="w-full h-6 pl-7 pr-7 text-xs rounded-md bg-muted/50 border border-transparent focus:border-border focus:outline-none focus:bg-background"
           />
           {query && (
             <button
