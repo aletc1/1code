@@ -319,8 +319,11 @@ export const ChangesWidget = memo(function ChangesWidget({
           {/* Spacer */}
           <div className="flex-1" />
 
-          {/* Expand to sidebar button */}
-          {onExpand && (
+          {/* Expand to panel — same hover-revealed top-right pattern as
+              the rest of the widgets in WidgetCard. Was previously gated
+              on an `onExpand` prop, but the dockview always provides a
+              target via `widgetPanel.openAsPanel()`. */}
+          {(widgetPanel.available || onExpand) && (
             <Tooltip>
               <TooltipTrigger asChild>
                 <Button
@@ -406,10 +409,11 @@ export const ChangesWidget = memo(function ChangesWidget({
               })}
             </div>
 
-            {/* Action buttons */}
-            <div className="flex gap-2 p-2 border-t border-border/50">
-              {/* Commit button */}
-              {onCommit && (
+            {/* Action buttons. The previous "View Diff" button is gone —
+                the top-right ↗ icon (revealed on header hover) opens the
+                full Changes panel, matching the rest of the widgets. */}
+            {onCommit && (
+              <div className="flex gap-2 p-2 border-t border-border/50">
                 <Button
                   variant="default"
                   size="sm"
@@ -423,18 +427,8 @@ export const ChangesWidget = memo(function ChangesWidget({
                       ? `Commit & Push${commitLabelSuffix}`
                       : `Commit${commitLabelSuffix}`)}
                 </Button>
-              )}
-
-              {/* View diff button */}
-              <Button
-                variant="outline"
-                size="sm"
-                className={cn("h-7 text-xs", onCommit ? "w-24" : "w-full")}
-                onClick={handleExpand}
-              >
-                View Diff
-              </Button>
-            </div>
+              </div>
+            )}
           </>
         ) : (
           <div className="text-xs text-muted-foreground px-2 py-2">
