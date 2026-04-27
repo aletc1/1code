@@ -210,6 +210,49 @@ const fileSearchAction: AgentActionDefinition = {
   },
 }
 
+// The next three actions intentionally don't use any AgentActionContext
+// state — they need access to the workspace's `usePanelActions()`, which
+// requires the DockProvider. So we dispatch a CustomEvent here and let
+// `<DockHotkeysHost />` (mounted inside DockProvider) call the panel
+// action with the live dockApi. Same indirection pattern as
+// `open-in-editor` / `open-file-in-editor`.
+
+const createNewSubChatAction: AgentActionDefinition = {
+  id: "create-new-subchat",
+  label: "New chat",
+  description: "Create a new sub-chat tab in the active workspace",
+  category: "chat",
+  hotkey: "cmd+t",
+  handler: async () => {
+    window.dispatchEvent(new CustomEvent("dock:new-subchat"))
+    return { success: true }
+  },
+}
+
+const newTerminalAction: AgentActionDefinition = {
+  id: "new-terminal",
+  label: "New terminal",
+  description: "Open a new terminal panel in the active workspace",
+  category: "view",
+  hotkey: "cmd+shift+t",
+  handler: async () => {
+    window.dispatchEvent(new CustomEvent("dock:new-terminal"))
+    return { success: true }
+  },
+}
+
+const openSearchAction: AgentActionDefinition = {
+  id: "open-search",
+  label: "Search in project",
+  description: "Open the project search panel",
+  category: "navigation",
+  hotkey: "cmd+shift+f",
+  handler: async () => {
+    window.dispatchEvent(new CustomEvent("dock:open-search"))
+    return { success: true }
+  },
+}
+
 // ============================================================================
 // ACTION REGISTRY
 // ============================================================================
@@ -217,6 +260,9 @@ const fileSearchAction: AgentActionDefinition = {
 export const AGENT_ACTIONS: Record<string, AgentActionDefinition> = {
   "open-shortcuts": openShortcutsAction,
   "create-new-agent": createNewAgentAction,
+  "create-new-subchat": createNewSubChatAction,
+  "new-terminal": newTerminalAction,
+  "open-search": openSearchAction,
   "open-settings": openSettingsAction,
   "toggle-sidebar": toggleSidebarAction,
   "toggle-chat-search": toggleChatSearchAction,

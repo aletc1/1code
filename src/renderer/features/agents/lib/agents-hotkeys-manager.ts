@@ -33,8 +33,12 @@ const SHORTCUT_TO_ACTION_MAP: Record<ShortcutActionId, string> = {
   "archive-workspace": "archive-workspace",
   "quick-switch-workspaces": "quick-switch-workspaces",
   "open-kanban": "open-kanban",
-  "new-agent": "create-new-agent",
-  "new-agent-split": "create-new-agent-split",
+  // ⌘T → new sub-chat in the active workspace (was new-workspace, now
+  // distinct from ⌘N).
+  "new-agent": "create-new-subchat",
+  // ⌘⇧T → new terminal in the active workspace (the old split-view
+  // action never had a real handler).
+  "new-agent-split": "new-terminal",
   "search-chats": "search-chats",
   "search-in-chat": "toggle-chat-search",
   "archive-agent": "archive-agent",
@@ -49,6 +53,7 @@ const SHORTCUT_TO_ACTION_MAP: Record<ShortcutActionId, string> = {
   "open-diff": "open-diff",
   "create-pr": "create-pr",
   "file-search": "file-search",
+  "open-search": "open-search",
   "voice-input": "voice-input", // Handled directly in chat-input-area.tsx
   "open-in-editor": "open-in-editor",
   "open-file-in-editor": "open-file-in-editor",

@@ -31,6 +31,7 @@ export type ShortcutActionId =
   | "open-diff"
   | "create-pr"
   | "file-search"
+  | "open-search"
   | "voice-input"
   | "open-in-editor"
   | "open-file-in-editor"

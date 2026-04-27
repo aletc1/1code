@@ -56,19 +56,7 @@ import {
   type SubChatMeta,
 } from "../stores/sub-chat-store"
 import { useShallow } from "zustand/react/shallow"
-import {
-  DndContext,
-  DragOverlay,
-  PointerSensor,
-  useSensor,
-  useSensors,
-  closestCenter,
-  type DragEndEvent,
-  type DragStartEvent,
-} from "@dnd-kit/core"
-import { arrayMove } from "@dnd-kit/sortable"
 import { PlanIcon, AgentIcon } from "../../../components/ui/icons"
-import { SPLIT_DROP_DATA } from "./split-view-container"
 import { motion, AnimatePresence } from "motion/react"
 // import { ResizableSidebar } from "@/app/(alpha)/canvas/[id]/{components}/resizable-sidebar"
 import { ResizableSidebar } from "../../../components/ui/resizable-sidebar"
@@ -1004,50 +992,11 @@ export function AgentsContent({
     )
   }
 
-  // Shared drag context covering sidebar + main content. Drag within sidebar
-  // reorders (sortable); drag onto a SPLIT_DROP_DATA target adds to split.
-  // 4px activation distance preserves click semantics for non-drag taps.
-  const dndSensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
-  )
-  // Track the item currently being dragged so <DragOverlay> can render a
-  // portal-mounted preview that isn't clipped by the sidebar's overflow.
-  const [activeDragId, setActiveDragId] = useState<string | null>(null)
-  const handleDndStart = useCallback((event: DragStartEvent) => {
-    setActiveDragId(String(event.active.id))
-  }, [])
-  const handleDndEnd = useCallback((event: DragEndEvent) => {
-    setActiveDragId(null)
-    const { active, over } = event
-    if (!over || active.id === over.id) return
-    const activeId = String(active.id)
-    const store = useAgentSubChatStore.getState()
-
-    if (over.data?.current?.type === SPLIT_DROP_DATA.type) {
-      store.addToSplit(activeId)
-      return
-    }
-
-    // Otherwise: sidebar reorder.
-    const fromIdx = store.openSubChatIds.indexOf(activeId)
-    const toIdx = store.openSubChatIds.indexOf(String(over.id))
-    if (fromIdx < 0 || toIdx < 0) return
-    store.setOpenSubChats(arrayMove(store.openSubChatIds, fromIdx, toIdx))
-  }, [])
-  const handleDndCancel = useCallback(() => setActiveDragId(null), [])
-
-  // Desktop layout
-  // The previous @dnd-kit DndContext that wrapped this tree captured every
-  // pointerdown via PointerSensor and prevented dockview's native tab
-  // drag/drop from receiving events — so dropping a tab to split a group
-  // silently failed. Its consumers (split-view-container drop targets, the
-  // sub-chats sortable sidebar) are gone now, so the context is removed
-  // outright. A noop reference keeps the import alive for code-readers.
-  void handleDndStart
-  void handleDndEnd
-  void handleDndCancel
-  void dndSensors
-  void activeDragId
+  // The legacy @dnd-kit DndContext + sub-chat sortable sidebar used to
+  // live here, plus a "drop onto SPLIT_DROP_DATA target adds to split"
+  // wiring. Dockview's native tab drag/drop replaces all of it; the
+  // pointer-down capture from @dnd-kit's PointerSensor was actively
+  // blocking dockview's tab drops, so the whole stack was removed.
   return (
     <>
       <div className="flex h-full">
