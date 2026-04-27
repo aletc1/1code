@@ -316,7 +316,7 @@ export function DetailsSidebar({
 
   // Resolved hotkeys for tooltips
   const toggleDetailsHotkey = useResolvedHotkeyDisplay("toggle-details")
-  const fileSearchHotkey = useResolvedHotkeyDisplay("file-search")
+  const fileSearchHotkey = useResolvedHotkeyDisplay("open-spotlight")
 
   // Check if a widget should be shown
   const isWidgetVisible = useCallback(

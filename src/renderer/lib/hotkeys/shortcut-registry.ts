@@ -27,6 +27,13 @@ export const ALL_SHORTCUT_ACTIONS: ShortcutAction[] = [
     defaultKeys: ["cmd", ","],
   },
   {
+    id: "open-spotlight",
+    label: "Open Spotlight",
+    category: "general",
+    defaultKeys: ["cmd", "K"],
+    altKeys: ["cmd", "P"],
+  },
+  {
     id: "toggle-sidebar",
     label: "Toggle sidebar",
     category: "general",
@@ -56,10 +63,13 @@ export const ALL_SHORTCUT_ACTIONS: ShortcutAction[] = [
     altKeys: ["C"],
   },
   {
+    // Superseded by Spotlight (cmd+K). Kept in the registry so users with
+    // custom bindings still see / can re-bind it, but the default is unset
+    // to avoid colliding with open-spotlight.
     id: "search-workspaces",
     label: "Search workspaces",
     category: "workspaces",
-    defaultKeys: ["cmd", "K"],
+    defaultKeys: [],
   },
   {
     id: "archive-workspace",
@@ -183,12 +193,6 @@ export const ALL_SHORTCUT_ACTIONS: ShortcutAction[] = [
     label: "Create PR",
     category: "agents",
     defaultKeys: [],
-  },
-  {
-    id: "file-search",
-    label: "Go to file",
-    category: "agents",
-    defaultKeys: ["cmd", "P"],
   },
   {
     // ⌘⇧F — opens the project-wide search panel in the dockview.

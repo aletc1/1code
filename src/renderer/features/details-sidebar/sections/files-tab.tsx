@@ -20,7 +20,7 @@ import { RenameDialog } from "@/components/rename-dialog"
 import { preferredEditorAtom } from "@/lib/atoms"
 import { getAppOption } from "@/components/open-in-button"
 import { getFileIconByExtension } from "../../agents/mentions/agents-file-mention"
-import { fileSearchDialogOpenAtom } from "../../agents/atoms"
+import { spotlightOpenAtom } from "../../spotlight/atoms"
 import { fileTreeExpandedAtomFamily } from "../atoms"
 
 // ============================================================================
@@ -348,7 +348,7 @@ export const FilesTab = memo(forwardRef<FilesTabHandle, FilesTabProps>(function 
   // focusedPath = keyboard/click cursor (primary highlight)
   const [focusedPath, setFocusedPath] = useState<string | null>(null)
   const treeRef = useRef<HTMLDivElement>(null)
-  const setFileSearchOpen = useSetAtom(fileSearchDialogOpenAtom)
+  const setSpotlightOpen = useSetAtom(spotlightOpenAtom)
 
   // Persisted expanded paths (per worktree, survives reloads)
   // Use a static noop atom when worktreePath is null to avoid polluting storage
@@ -440,8 +440,8 @@ export const FilesTab = memo(forwardRef<FilesTabHandle, FilesTabProps>(function 
   )
 
   const openSearch = useCallback(() => {
-    setFileSearchOpen(true)
-  }, [setFileSearchOpen])
+    setSpotlightOpen(true)
+  }, [setSpotlightOpen])
 
   // Proper subset check: all folder paths must be in expanded set
   const isAllExpanded = useMemo(() => {
