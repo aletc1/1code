@@ -3,6 +3,8 @@
 import {
   Activity,
   Bell,
+  Bot,
+  Brain,
   Clock,
   Eye,
   FileCode2,
@@ -134,7 +136,7 @@ function calculateDiffStats(oldString: string, newString: string) {
 
 export const AgentToolRegistry: Record<string, ToolMeta> = {
   "tool-Task": {
-    icon: SparklesIcon,
+    icon: Bot,
     title: (part) => {
       const isPending =
         part.state !== "output-available" && part.state !== "output-error"
@@ -600,7 +602,7 @@ export const AgentToolRegistry: Record<string, ToolMeta> = {
 
   // Extended Thinking
   "tool-Thinking": {
-    icon: SparklesIcon,
+    icon: Brain,
     title: (part) => {
       const isPending =
         part.state !== "output-available" && part.state !== "output-error"

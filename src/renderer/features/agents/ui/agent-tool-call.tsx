@@ -21,12 +21,12 @@ interface AgentToolCallProps {
 
 export const AgentToolCall = memo(
   function AgentToolCall({
-    icon: _Icon,
+    icon: Icon,
     title,
     subtitle,
     tooltipContent,
     isPending,
-    isError: _isError,
+    isError,
     isNested,
     onClick,
   }: AgentToolCallProps) {
@@ -67,16 +67,19 @@ export const AgentToolCall = memo(
       )
     ) : null
 
+    const iconColorClass = isError
+      ? "text-destructive/70"
+      : "text-muted-foreground/70"
+
     return (
       <div
         className={`flex items-start gap-1.5 py-0.5 ${
-          isNested ? "px-2.5" : "rounded-md px-2"
+          isNested ? "" : "rounded-md px-2"
         }`}
       >
-        {/* Icon container - commented out like canvas, uncomment to show icons */}
-        {/* <div className="flex-shrink-0 flex text-muted-foreground items-start pt-[1px]">
-          <_Icon className="w-3.5 h-3.5" />
-        </div> */}
+        <div className="flex-shrink-0 flex items-start pt-[1px]">
+          <Icon className={`w-3.5 h-3.5 ${iconColorClass}`} />
+        </div>
 
         {/* Content container - matches canvas exactly */}
         <div className="flex-1 min-w-0 flex items-center gap-1.5">
