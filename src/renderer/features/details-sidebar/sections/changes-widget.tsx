@@ -14,7 +14,8 @@ import {
 import { Kbd } from "@/components/ui/kbd"
 import { cn } from "@/lib/utils"
 import { useResolvedHotkeyDisplay } from "@/lib/hotkeys"
-import { viewedFilesAtomFamily, fileViewerOpenAtomFamily, diffSidebarOpenAtomFamily } from "@/features/agents/atoms"
+import { viewedFilesAtomFamily, fileViewerOpenAtomFamily, diffSidebarOpenAtomFamily, subChatFilesAtom } from "@/features/agents/atoms"
+import { useAgentSubChatStore } from "@/features/agents/stores/sub-chat-store"
 import { getSyncActionKind } from "@/features/changes/utils"
 import {
   FileListItem,
@@ -107,10 +108,65 @@ export const ChangesWidget = memo(function ChangesWidget({
 
   // Data is now cached at the ActiveChat level via workspaceDiffCacheAtomFamily
   // So parsedFileDiffs and diffStats persist across workspace switches
-  const displayFiles = parsedFileDiffs ?? []
-  const displayStats = diffStats
+  const allFiles = parsedFileDiffs ?? []
+  const allStats = diffStats
+
+  // Always-scoped: narrow to files the active sub-chat has edited. This widget
+  // is the "what I did in this chat" summary. Files modified only via Bash
+  // (mv/rm/sed -i) aren't tracked and won't appear here — open the full
+  // Changes panel to see those.
+  const activeSubChatId = useAgentSubChatStore((s) => s.activeSubChatId)
+  const subChatFiles = useAtomValue(subChatFilesAtom)
+  const scopedPathSet = useMemo(() => {
+    if (!activeSubChatId) return null
+    const entries = subChatFiles.get(activeSubChatId)
+    if (!entries || entries.length === 0) return new Set<string>()
+    const set = new Set<string>()
+    for (const e of entries) {
+      if (e.displayPath) set.add(e.displayPath)
+      if (e.filePath) set.add(e.filePath)
+    }
+    return set
+  }, [activeSubChatId, subChatFiles])
+
+  const matchesScope = useCallback(
+    (path: string): boolean => {
+      if (!scopedPathSet || scopedPathSet.size === 0) return false
+      if (scopedPathSet.has(path)) return true
+      // Tolerate prefix mismatches (worktree-absolute vs repo-relative).
+      for (const scoped of scopedPathSet) {
+        if (scoped.endsWith(path) || path.endsWith(scoped)) return true
+      }
+      return false
+    },
+    [scopedPathSet],
+  )
+
+  const displayFiles = useMemo(() => {
+    if (scopedPathSet === null) return allFiles
+    return allFiles.filter((f) => {
+      const newPath = f.newPath && f.newPath !== "/dev/null" ? f.newPath : null
+      const oldPath = f.oldPath && f.oldPath !== "/dev/null" ? f.oldPath : null
+      return (newPath && matchesScope(newPath)) || (oldPath && matchesScope(oldPath))
+    })
+  }, [allFiles, scopedPathSet, matchesScope])
+
+  // Recompute stats from the scoped file set so header counts match the list.
+  const displayStats = useMemo(() => {
+    if (scopedPathSet === null) return allStats
+    let additions = 0
+    let deletions = 0
+    for (const f of displayFiles) {
+      additions += f.additions
+      deletions += f.deletions
+    }
+    return { additions, deletions, fileCount: displayFiles.length }
+  }, [scopedPathSet, allStats, displayFiles])
 
   const hasChanges = displayStats && displayStats.fileCount > 0
+  const branchHasChanges = !!allStats && allStats.fileCount > 0
+  const isScopedEmptyButBranchHasChanges =
+    scopedPathSet !== null && !hasChanges && branchHasChanges
 
   // Get tooltip text based on diff display mode
   const expandTooltip = diffDisplayMode === "side-peek"
@@ -287,7 +343,17 @@ export const ChangesWidget = memo(function ChangesWidget({
 
           {/* Title + branch */}
           <div className="flex items-center gap-1 min-w-0">
-            <span className="text-xs font-medium text-foreground">Changes</span>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <span className="text-xs font-medium text-foreground cursor-default">
+                  Changes
+                </span>
+              </TooltipTrigger>
+              <TooltipContent side="bottom" className="max-w-[260px]">
+                Showing files this chat edited. Bash-only edits (mv/rm/sed) aren't
+                tracked. Open the full Changes panel to see all branch changes.
+              </TooltipContent>
+            </Tooltip>
             {currentBranch && worktreePath ? (
               <span className="text-xs text-muted-foreground flex items-center gap-1 min-w-0">
                 <span className="shrink-0">on</span>
@@ -430,6 +496,11 @@ export const ChangesWidget = memo(function ChangesWidget({
               </div>
             )}
           </>
+        ) : isScopedEmptyButBranchHasChanges ? (
+          <div className="text-xs text-muted-foreground px-2 py-2">
+            This chat hasn&apos;t edited any files yet. Open the full Changes
+            panel to see all branch changes.
+          </div>
         ) : (
           <div className="text-xs text-muted-foreground px-2 py-2">
             No changes

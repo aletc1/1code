@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import type { IDockviewPanelProps } from "dockview-react"
 import { toast } from "sonner"
 import { useAtom, useAtomValue, useSetAtom } from "jotai"
@@ -18,6 +18,8 @@ import {
   pendingPrMessageAtom,
   pendingReviewMessageAtom,
   pendingConflictResolutionMessageAtom,
+  subChatFilesAtom,
+  filteredSubChatIdAtom,
   type SelectedCommit,
 } from "../../agents/atoms"
 import { useAgentSubChatStore } from "../../agents/stores/sub-chat-store"
@@ -83,6 +85,13 @@ export function DiffPanel({ params }: IDockviewPanelProps<DiffPanelEntity>) {
     { enabled: !!worktreePath, staleTime: 30_000 },
   )
 
+  // Clear selectedCommit when the worktree changes — the atom is global so a
+  // commit hash from worktree A would otherwise leak into worktree B and
+  // surface as a "bad object" git error in getCommitFiles / getCommitFileDiff.
+  useEffect(() => {
+    setSelectedCommit(null)
+  }, [worktreePath, setSelectedCommit])
+
   const { data: gitStatus, isLoading: isGitStatusLoading } =
     trpc.changes.getStatus.useQuery(
       { worktreePath: worktreePath ?? "" },
@@ -94,13 +103,29 @@ export function DiffPanel({ params }: IDockviewPanelProps<DiffPanelEntity>) {
     { enabled: !!chatId },
   )
 
+  // Build filter items from sub-chat metadata + the per-sub-chat tracked-file
+  // map. Only include sub-chats with at least one tracked file so the toggle
+  // and popover stay relevant.
+  const subChatFiles = useAtomValue(subChatFilesAtom)
   const subChatsForFilter = useMemo(() => {
     const subs = (agentChat as any)?.subChats ?? []
-    return subs.map((sc: { id: string; name?: string | null }) => ({
-      id: sc.id,
-      name: sc.name ?? "Conversation",
-    }))
-  }, [agentChat])
+    return subs
+      .map((sc: { id: string; name?: string | null }) => {
+        const files = subChatFiles.get(sc.id) ?? []
+        return {
+          id: sc.id,
+          name: sc.name ?? "Conversation",
+          filePaths: files.map((f) => f.filePath),
+          fileCount: files.length,
+        }
+      })
+      .filter((item: { fileCount: number }) => item.fileCount > 0)
+  }, [agentChat, subChatFiles])
+
+  // Active sub-chat — drives the Scoped/All toggle. The store's chatId is
+  // set when the user navigates into a chat; for the dockview-promoted panel
+  // this will match the panel's chatId when the user is viewing it.
+  const activeSubChatId = useAgentSubChatStore((s) => s.activeSubChatId)
 
   const [selectedFilePath, setSelectedFilePath] = useState<string | null>(null)
   const handleFileSelect = useCallback(
@@ -210,6 +235,7 @@ export function DiffPanel({ params }: IDockviewPanelProps<DiffPanelEntity>) {
   // Mirrors active-chat.tsx's handleReview: pulls PR context, switches
   // the sub-chat to the review-mode model, and seeds
   // pendingReviewMessageAtom which ChatViewInner consumes and sends.
+  const filteredSubChatIdValue = useAtomValue(filteredSubChatIdAtom)
   const handleReview = useCallback(async () => {
     if (!chatId) return
     setIsReviewing(true)
@@ -225,7 +251,16 @@ export function DiffPanel({ params }: IDockviewPanelProps<DiffPanelEntity>) {
         return
       }
       applyModeDefaultModel(activeSubChatId, "review")
-      const message = generateReviewMessage(context)
+      // Honor the Scoped/All toggle: pass the filtered file list when set.
+      const scopedFiles = filteredSubChatIdValue
+        ? (subChatFiles.get(filteredSubChatIdValue) ?? [])
+            .map((f) => f.displayPath || f.filePath)
+            .filter((p): p is string => !!p)
+        : []
+      const message = generateReviewMessage(
+        context,
+        scopedFiles.length > 0 ? scopedFiles : undefined,
+      )
       setPendingReviewMessage({ message, subChatId: activeSubChatId })
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Failed to start review", {
@@ -234,7 +269,7 @@ export function DiffPanel({ params }: IDockviewPanelProps<DiffPanelEntity>) {
     } finally {
       setIsReviewing(false)
     }
-  }, [chatId, setPendingReviewMessage])
+  }, [chatId, setPendingReviewMessage, filteredSubChatIdValue, subChatFiles])
 
   // Create PR — direct mutation (opens GitHub's PR-create page).
   const handleCreatePrDirect = useCallback(async () => {
@@ -383,6 +418,7 @@ Make sure to preserve all functionality from both branches when resolving confli
             onFileSelect={handleFileSelect}
             onFileOpenPinned={() => {}}
             subChats={subChatsForFilter}
+            activeSubChatId={activeSubChatId}
             chatId={chatId}
             selectedCommitHash={selectedCommit?.hash}
             onCommitSelect={handleCommitSelect}
