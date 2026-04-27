@@ -4,7 +4,7 @@ import { memo, useCallback, useMemo, useState, useEffect, useRef } from "react"
 import { useAtom, useAtomValue, useSetAtom } from "jotai"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
-import { ArrowUpRight } from "lucide-react"
+import { ArrowUpRight, Info } from "lucide-react"
 import { DiffIcon } from "@/components/ui/icons"
 import {
   Tooltip,
@@ -16,7 +16,7 @@ import { cn } from "@/lib/utils"
 import { useResolvedHotkeyDisplay } from "@/lib/hotkeys"
 import { viewedFilesAtomFamily, fileViewerOpenAtomFamily, diffSidebarOpenAtomFamily, subChatFilesAtom } from "@/features/agents/atoms"
 import { useAgentSubChatStore } from "@/features/agents/stores/sub-chat-store"
-import { getSyncActionKind } from "@/features/changes/utils"
+import { getSyncActionKind, matchesFilePath } from "@/features/changes/utils"
 import {
   FileListItem,
   getFileName,
@@ -134,8 +134,10 @@ export const ChangesWidget = memo(function ChangesWidget({
       if (!scopedPathSet || scopedPathSet.size === 0) return false
       if (scopedPathSet.has(path)) return true
       // Tolerate prefix mismatches (worktree-absolute vs repo-relative).
+      // matchesFilePath requires a `/` boundary so "auth.ts" doesn't match
+      // "oauth.ts" and "lib/foo.ts" doesn't match "mylib/foo.ts".
       for (const scoped of scopedPathSet) {
-        if (scoped.endsWith(path) || path.endsWith(scoped)) return true
+        if (matchesFilePath(scoped, path)) return true
       }
       return false
     },
@@ -343,11 +345,16 @@ export const ChangesWidget = memo(function ChangesWidget({
 
           {/* Title + branch */}
           <div className="flex items-center gap-1 min-w-0">
+            <span className="text-xs font-medium text-foreground">Changes</span>
             <Tooltip>
               <TooltipTrigger asChild>
-                <span className="text-xs font-medium text-foreground cursor-default">
-                  Changes
-                </span>
+                <button
+                  type="button"
+                  aria-label="About this view"
+                  className="inline-flex items-center justify-center size-3.5 rounded text-muted-foreground/70 hover:text-foreground transition-colors"
+                >
+                  <Info className="size-3" />
+                </button>
               </TooltipTrigger>
               <TooltipContent side="bottom" className="max-w-[260px]">
                 Showing files this chat edited. Bash-only edits (mv/rm/sed) aren't

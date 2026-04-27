@@ -33,6 +33,7 @@ import { ChangesFileFilter, type SubChatFilterItem } from "./components/changes-
 import { CommitInput } from "./components/commit-input";
 import { HistoryView, type CommitInfo } from "./components/history-view";
 import { getStatusIndicator } from "./utils/status";
+import { matchesFilePath } from "./utils/path-match";
 import { GitPullRequest, Eye } from "lucide-react";
 import type { ChangedFile as HistoryChangedFile } from "../../../shared/changes-types";
 import { viewedFilesAtomFamily, type ViewedFileState } from "../agents/atoms";
@@ -450,30 +451,50 @@ export function ChangesView({
 	// Anchor for Shift+Click is the currently selected file (selectedFile) - the one showing in diff view
 	const [highlightedFiles, setHighlightedFiles] = useState<Set<string>>(new Set());
 
-	// Reset filters when worktreePath changes, and apply the smart default for
-	// the Scoped/All toggle: Scoped to the active sub-chat if it has any
-	// tracked edits, otherwise All. The smart default fires once per
-	// worktree+sub-chat pair so the user's in-session toggling isn't clobbered.
-	const lastDefaultKeyRef = useRef<string>("");
+	// Reset transient state on chat/worktree change.
 	useEffect(() => {
 		setFileFilter("");
 		setHasInitializedSelection(false);
 		setSelectedForCommit(new Set());
 		setHighlightedFiles(new Set());
 		prevAllPathsRef.current = new Set();
+	}, [worktreePath]);
 
-		const defaultKey = `${worktreePath ?? ""}::${activeSubChatId ?? ""}`;
-		if (lastDefaultKeyRef.current !== defaultKey) {
-			lastDefaultKeyRef.current = defaultKey;
-			const activeHasEdits = !!(
-				activeSubChatId && subChats.some((sc) => sc.id === activeSubChatId)
-			);
-			setSubChatFilter(activeHasEdits ? activeSubChatId : null);
+	// Smart default for the Scoped/All toggle. Two-phase to handle async
+	// subChats arrival: on a new (worktree, activeSubChatId) pair we reset to
+	// null immediately; once `subChats` first contains the active sub-chat we
+	// promote to Scoped — but only if the user hasn't deliberately clicked the
+	// toggle in between (`userToggledRef`). Without the second phase, cold
+	// mounts default to `All` and never recover when edit data lands.
+	const filterKeyRef = useRef<string>("");
+	const filterAppliedRef = useRef(false);
+	const userToggledRef = useRef(false);
+	useEffect(() => {
+		const key = `${worktreePath ?? ""}::${activeSubChatId ?? ""}`;
+		if (filterKeyRef.current !== key) {
+			filterKeyRef.current = key;
+			filterAppliedRef.current = false;
+			userToggledRef.current = false;
+			setSubChatFilter(null);
 		}
-		// `subChats` intentionally omitted: it streams in over the chat lifetime
-		// and we don't want the default to retrigger every time it updates.
-		// eslint-disable-next-line react-hooks/exhaustive-deps
-	}, [worktreePath, activeSubChatId, setSubChatFilter]);
+		if (!activeSubChatId || filterAppliedRef.current) return;
+		if (subChats.some((sc) => sc.id === activeSubChatId)) {
+			filterAppliedRef.current = true;
+			if (!userToggledRef.current) {
+				setSubChatFilter(activeSubChatId);
+			}
+		}
+	}, [worktreePath, activeSubChatId, subChats, setSubChatFilter]);
+
+	// Toggle handler for user clicks — flips userToggledRef so the smart-default
+	// effect doesn't override the deliberate choice when subChats arrives later.
+	const handleUserToggleScope = useCallback(
+		(value: string | null) => {
+			userToggledRef.current = true;
+			setSubChatFilter(value);
+		},
+		[setSubChatFilter],
+	);
 
 	// Combine all files into a flat list
 	const allFiles = useMemo(() => {
@@ -545,15 +566,13 @@ export function ChangesView({
 	const filteredFiles = useMemo(() => {
 		let result = allFiles;
 
-		// Apply subchat filter first
+		// Apply subchat filter first. Boundary-aware match — see matchesFilePath
+		// for why this isn't just endsWith (avoids "auth.ts" matching "oauth.ts").
 		if (subChatFilterPaths) {
 			result = result.filter(({ file }) =>
-				subChatFilterPaths.some(
-					(filterPath) =>
-						file.path === filterPath ||
-						file.path.endsWith(filterPath) ||
-						filterPath.endsWith(file.path)
-				)
+				subChatFilterPaths.some((filterPath) =>
+					matchesFilePath(file.path, filterPath),
+				),
 			);
 		}
 
@@ -961,7 +980,7 @@ export function ChangesView({
 													variant={isScoped ? "secondary" : "ghost"}
 													size="sm"
 													className="h-6 px-2 text-xs"
-													onClick={() => setSubChatFilter(activeSubChatId)}
+													onClick={() => handleUserToggleScope(activeSubChatId)}
 													aria-pressed={isScoped}
 												>
 													This chat
@@ -983,7 +1002,7 @@ export function ChangesView({
 													variant={subChatFilter === null ? "secondary" : "ghost"}
 													size="sm"
 													className="h-6 px-2 text-xs"
-													onClick={() => setSubChatFilter(null)}
+													onClick={() => handleUserToggleScope(null)}
 													aria-pressed={subChatFilter === null}
 												>
 													All changes

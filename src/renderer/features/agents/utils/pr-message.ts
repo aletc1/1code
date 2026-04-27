@@ -95,6 +95,10 @@ Please commit and push these changes to update the PR:
  * Quote a path for safe inclusion in a shell command. Single-quotes preserve
  * everything literally; embedded single-quotes are escaped via the `'\''`
  * trick. Sufficient for the file paths git produces.
+ *
+ * NOTE: POSIX-only quoting. The output is executed by Claude's Bash tool,
+ * which on Windows runs through Git Bash / WSL — a POSIX environment — so
+ * single-quote semantics hold. Don't reuse this for native Windows cmd.exe.
  */
 function shellQuote(path: string): string {
   return `'${path.replace(/'/g, `'\\''`)}'`

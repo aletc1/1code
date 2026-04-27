@@ -17,16 +17,21 @@ import { gitCache } from "./cache";
  * worktree/branch and the user has since switched. We treat these as a
  * benign empty-result rather than a hard error: the UI was about to
  * render a stale selection and we just want to show nothing for it.
+ *
+ * Git's standard "unknown ref" output is along the lines of
+ *   fatal: ambiguous argument 'abc': unknown revision or path not in the working tree.
+ * — so we require both "ambiguous argument" AND "unknown revision" to
+ * co-occur, otherwise legitimate ambiguity errors (a short SHA that
+ * matches multiple real commits) would be silently swallowed.
  */
 function isUnknownRevisionError(err: unknown): boolean {
 	if (!(err instanceof Error)) return false;
 	const msg = err.message;
-	return (
-		msg.includes("bad object") ||
-		msg.includes("unknown revision") ||
-		msg.includes("ambiguous argument") ||
-		msg.includes("Not a valid object name")
-	);
+	if (msg.includes("bad object")) return true;
+	if (msg.includes("Not a valid object name")) return true;
+	if (msg.includes("ambiguous argument") && msg.includes("unknown revision"))
+		return true;
+	return false;
 }
 
 export const createStatusRouter = () => {
