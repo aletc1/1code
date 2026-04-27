@@ -42,6 +42,13 @@ interface FilesTabProps {
   /** Absolute path of the file currently open in file viewer (for highlight sync) */
   currentViewerFilePath?: string | null
   className?: string
+  /**
+   * When true, render an inline filename filter input above the tree.
+   * The input does a case-insensitive substring match on the file path
+   * and force-expands all folders in the resulting tree. Default false
+   * (the dockview file-explorer panel uses spotlight / ⌘P instead).
+   */
+  showFilterInput?: boolean
 }
 
 export interface FilesTabHandle {
@@ -335,7 +342,11 @@ export const FilesTab = memo(forwardRef<FilesTabHandle, FilesTabProps>(function 
   onExpandedStateChange,
   currentViewerFilePath,
   className,
+  showFilterInput = false,
 }, ref) {
+  // Inline filename filter — only used when showFilterInput is true.
+  const [filterQuery, setFilterQuery] = useState("")
+  const filterTrimmed = filterQuery.trim().toLowerCase()
   // activePath = file currently open in viewer (secondary highlight), derived from prop
   const activePath = useMemo(() => {
     if (!currentViewerFilePath || !worktreePath) return null
@@ -365,15 +376,21 @@ export const FilesTab = memo(forwardRef<FilesTabHandle, FilesTabProps>(function 
   const expandedPathsRef = useRef(expandedPaths)
   expandedPathsRef.current = expandedPaths
 
+  // Separate ref for the rendering-only "effective" expansion set (persisted ∪
+  // filter-derived). Updated below once the filter and tree are computed.
+  const effectiveExpandedPathsRef = useRef<Set<string>>(expandedPaths)
+
   const setExpandedPaths = useCallback((update: Set<string> | ((prev: Set<string>) => Set<string>)) => {
     const prev = expandedPathsRef.current
     const next = typeof update === "function" ? update(prev) : update
     setStoredExpanded([...next])
   }, [setStoredExpanded])
 
-  // Stable callback for TreeNode to check if a path is expanded (avoids passing Set)
+  // Stable callback for TreeNode to check if a path is expanded (avoids passing Set).
+  // Reads from the *effective* set so filter-driven expansions show through;
+  // setExpandedPaths still writes against the persisted set via expandedPathsRef.
   const isPathExpanded = useCallback((path: string): boolean => {
-    return expandedPathsRef.current.has(path)
+    return effectiveExpandedPathsRef.current.has(path)
   }, [])
 
   // Preferred editor for "Open in Editor" action
@@ -400,23 +417,42 @@ export const FilesTab = memo(forwardRef<FilesTabHandle, FilesTabProps>(function 
     { enabled: !!worktreePath, staleTime: 10000 },
   )
 
+  const filteredFiles = useMemo(() => {
+    if (!allFiles) return undefined
+    if (!filterTrimmed) return allFiles
+    return allFiles.filter((f) => f.path.toLowerCase().includes(filterTrimmed))
+  }, [allFiles, filterTrimmed])
+
   const tree = useMemo(() => {
-    if (!allFiles) return []
-    return buildFileTree(allFiles)
-  }, [allFiles])
+    if (!filteredFiles) return []
+    return buildFileTree(filteredFiles)
+  }, [filteredFiles])
 
   // Auto-expand root folders on first visit (storedExpanded === null means never set)
   useEffect(() => {
-    if (tree.length > 0 && worktreePath && storedExpanded === null) {
+    if (tree.length > 0 && worktreePath && storedExpanded === null && !filterTrimmed) {
       setStoredExpanded([...collectRootFolderPaths(tree)])
     }
-  }, [tree, worktreePath, storedExpanded, setStoredExpanded])
+  }, [tree, worktreePath, storedExpanded, setStoredExpanded, filterTrimmed])
 
   const allFolderPaths = useMemo(() => collectAllFolderPaths(tree), [tree])
 
+  // When the filter is active, force-expand every folder in the filtered tree
+  // so matched files are visible without manual expansion. The persisted
+  // expandedPaths atom is left untouched; clearing the filter restores the
+  // user's saved expansion state.
+  const effectiveExpandedPaths = useMemo(() => {
+    if (!filterTrimmed) return expandedPaths
+    return new Set([...expandedPaths, ...allFolderPaths])
+  }, [expandedPaths, allFolderPaths, filterTrimmed])
+
+  // Sync the rendering-only ref each render so isPathExpanded reflects
+  // both persisted and filter-derived expansions.
+  effectiveExpandedPathsRef.current = effectiveExpandedPaths
+
   const visibleNodes = useMemo(
-    () => flattenVisible(tree, expandedPaths),
-    [tree, expandedPaths],
+    () => flattenVisible(tree, effectiveExpandedPaths),
+    [tree, effectiveExpandedPaths],
   )
 
   // ---- Actions ----
@@ -742,10 +778,36 @@ export const FilesTab = memo(forwardRef<FilesTabHandle, FilesTabProps>(function 
 
   return (
     <div className={cn("flex flex-col h-full min-w-0 overflow-hidden", className)}>
+      {showFilterInput && (
+        <div className="flex-shrink-0 px-2 pt-1.5">
+          <div className="relative">
+            <input
+              type="text"
+              value={filterQuery}
+              onChange={(e) => setFilterQuery(e.target.value)}
+              placeholder="Filter files..."
+              aria-label="Filter files by name"
+              className="w-full h-6 pl-2 pr-7 text-xs rounded-md bg-muted/40 border border-border/50 outline-none focus:ring-1 focus:ring-primary/40 focus:border-primary/40 placeholder:text-muted-foreground"
+            />
+            {filterQuery && (
+              <button
+                type="button"
+                onClick={() => setFilterQuery("")}
+                aria-label="Clear filter"
+                className="absolute right-1 top-1/2 -translate-y-1/2 h-5 w-5 rounded-sm flex items-center justify-center text-muted-foreground hover:bg-foreground/10"
+              >
+                <span aria-hidden className="text-xs leading-none">×</span>
+              </button>
+            )}
+          </div>
+        </div>
+      )}
       <div className="flex-1 overflow-y-auto py-2 px-2">
         {tree.length === 0 ? (
           <div className="px-2 py-4 text-center">
-            <p className="text-xs text-muted-foreground">Loading files...</p>
+            <p className="text-xs text-muted-foreground">
+              {filterTrimmed ? "No matching files" : "Loading files..."}
+            </p>
           </div>
         ) : (
           <div
@@ -762,7 +824,7 @@ export const FilesTab = memo(forwardRef<FilesTabHandle, FilesTabProps>(function 
                 level={0}
                 focusedPath={focusedPath}
                 activePath={activePath}
-                isExpanded={node.type === "folder" && !!node.children && expandedPaths.has(node.path)}
+                isExpanded={node.type === "folder" && !!node.children && effectiveExpandedPaths.has(node.path)}
                 editorLabel={editorLabel}
                 isPathExpanded={isPathExpanded}
                 onToggleExpand={toggleExpand}

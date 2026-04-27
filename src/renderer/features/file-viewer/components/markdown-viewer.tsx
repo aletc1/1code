@@ -22,17 +22,20 @@ import { CopyButton } from "../../agents/ui/message-action-buttons"
 import { EDITOR_ICONS } from "@/lib/editor-icons"
 import { fileViewerWordWrapAtom } from "../../agents/atoms"
 import { defaultEditorOptions, getMonacoTheme } from "./monaco-config"
+import { FileTitleBlock } from "./file-title-block"
 
 interface MarkdownViewerProps {
   filePath: string
   projectPath: string
   onClose: () => void
+  showHeader?: boolean
 }
 
 export function MarkdownViewer({
   filePath,
   projectPath,
   onClose,
+  showHeader = false,
 }: MarkdownViewerProps) {
   const { resolvedTheme } = useTheme()
   const monacoTheme = getMonacoTheme(resolvedTheme || "dark")
@@ -104,6 +107,8 @@ export function MarkdownViewer({
           filePath={filePath}
           showPreview={showPreview}
           onToggleView={handleToggleView}
+          showHeader={showHeader}
+          onClose={onClose}
         />
         <div className="flex-1 flex items-center justify-center">
           <div className="flex flex-col items-center gap-3 text-muted-foreground">
@@ -131,6 +136,8 @@ export function MarkdownViewer({
           filePath={filePath}
           showPreview={showPreview}
           onToggleView={handleToggleView}
+          showHeader={showHeader}
+          onClose={onClose}
         />
         <div className="flex-1 flex items-center justify-center p-4">
           <div className="flex flex-col items-center gap-3 text-center max-w-[300px]">
@@ -151,6 +158,8 @@ export function MarkdownViewer({
         showPreview={showPreview}
         onToggleView={handleToggleView}
         content={content}
+        showHeader={showHeader}
+        onClose={onClose}
       />
       <div
         className="flex-1 min-h-0 overflow-hidden allow-text-selection"
@@ -187,11 +196,15 @@ function Header({
   showPreview,
   onToggleView,
   content,
+  showHeader = false,
+  onClose,
 }: {
   filePath: string
   showPreview: boolean
   onToggleView: () => void
   content?: string
+  showHeader?: boolean
+  onClose?: () => void
 }) {
   const preferredEditor = useAtomValue(preferredEditorAtom)
   const editorMeta = APP_META[preferredEditor]
@@ -207,14 +220,15 @@ function Header({
 
   return (
     <div
-      className="@container flex items-center justify-end px-2 h-10 border-b border-border/50 bg-background flex-shrink-0"
+      className={`@container flex items-center ${showHeader ? "justify-between" : "justify-end"} px-2 h-10 border-b border-border/50 bg-background flex-shrink-0`}
       style={{
         // @ts-expect-error - WebKit-specific property
         WebkitAppRegion: "no-drag",
       }}
     >
-      {/* Right-side actions only — dockview's tab provides the title +
-          close, and the tab icon already shows the file type. */}
+      {showHeader && onClose && (
+        <FileTitleBlock filePath={filePath} onClose={onClose} />
+      )}
       <div className="flex items-center gap-1 flex-shrink-0">
         {/* Open in editor */}
         <Tooltip delayDuration={500}>
