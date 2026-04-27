@@ -82,7 +82,10 @@ interface DiffSidebarHeaderProps {
 	isCreatingPrWithAI?: boolean;
 	onMergePr?: () => void;
 	isMergingPr?: boolean;
-	onClose: () => void;
+	/** When omitted, the inline X / close button is hidden — used when
+	 *  the surrounding chrome (e.g. a dockview tab) already provides
+	 *  its own close affordance. */
+	onClose?: () => void;
 	onRefresh?: () => void;
 	// PR state
 	hasPrNumber?: boolean;
@@ -451,19 +454,23 @@ export const DiffSidebarHeader = memo(function DiffSidebarHeader({
 					WebkitAppRegion: "no-drag",
 				}}
 			>
-				{/* Close button - X icon for dialog/fullpage modes, chevron for sidebar */}
-				<Button
-					variant="ghost"
-					size="sm"
-					className="h-6 w-6 p-0 flex-shrink-0 hover:bg-foreground/10"
-					onClick={onClose}
-				>
-					{displayMode === "side-peek" ? (
-						<IconCloseSidebarRight className="size-4 text-muted-foreground" />
-					) : (
-						<X className="size-4 text-muted-foreground" />
-					)}
-				</Button>
+				{/* Close button - X icon for dialog/fullpage modes, chevron for sidebar.
+				    Hidden entirely when there's no `onClose` (e.g. when this header
+				    sits inside a dockview tab that already has its own close X). */}
+				{onClose && (
+					<Button
+						variant="ghost"
+						size="sm"
+						className="h-6 w-6 p-0 flex-shrink-0 hover:bg-foreground/10"
+						onClick={onClose}
+					>
+						{displayMode === "side-peek" ? (
+							<IconCloseSidebarRight className="size-4 text-muted-foreground" />
+						) : (
+							<X className="size-4 text-muted-foreground" />
+						)}
+					</Button>
+				)}
 
 				{/* Display mode switcher (side-peek, center-peek, full-page) */}
 				{onDisplayModeChange && (

@@ -58,7 +58,7 @@ import type { DiffPanelEntity } from "../atoms"
  * duplicating a couple hundred lines of mutation glue. The user can
  * commit/PR from the chat side; this panel is for *viewing* changes.
  */
-export function DiffPanel({ params, api }: IDockviewPanelProps<DiffPanelEntity>) {
+export function DiffPanel({ params }: IDockviewPanelProps<DiffPanelEntity>) {
   const { chatId } = params
   const cache = useAtomValue(workspaceDiffCacheAtomFamily(chatId))
   const changesPanelWidth = useAtomValue(agentsChangesPanelWidthAtom)
@@ -194,10 +194,6 @@ export function DiffPanel({ params, api }: IDockviewPanelProps<DiffPanelEntity>)
       toast.error(error.message || "Failed to merge PR", { position: "top-center" })
     },
   })
-
-  const handleClose = useCallback(() => {
-    api.close()
-  }, [api])
 
   const handleRefresh = useCallback(() => {
     if (!chatId) return
@@ -361,7 +357,7 @@ Make sure to preserve all functionality from both branches when resolving confli
         isPrOpen={isPrOpen}
         hasMergeConflicts={hasMergeConflicts}
         onFixConflicts={handleFixConflicts}
-        onClose={handleClose}
+        // No onClose — dockview tab's X handles closing.
         onRefresh={handleRefresh}
         onExpandAll={handleExpandAll}
         onCollapseAll={handleCollapseAll}
