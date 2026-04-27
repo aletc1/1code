@@ -132,3 +132,14 @@ export const pinnedPanelIdsAtom = atomWithWindowStorage<string[]>(
 )
 
 export const dockReadyAtom = atom<boolean>(false)
+
+/**
+ * Workspaces whose `WorkspaceDockShell` has been mounted in *this session*.
+ *
+ * The center rail keeps each visited workspace's DockShell rendered (just
+ * stacked invisibly when not active) so terminals, chat streams, and panel
+ * state survive a switch. This atom drives that — entries are appended on
+ * first visit and removed only when the workspace is archived/deleted (or
+ * the window reloads, since this is intentionally not persisted).
+ */
+export const mountedWorkspaceIdsAtom = atom<string[]>([])

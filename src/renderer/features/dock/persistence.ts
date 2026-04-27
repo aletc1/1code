@@ -1,34 +1,63 @@
 import type { DockviewApi, GridviewApi } from "dockview-react"
 
-export interface AgentsLayoutSnapshot {
-  version: 2
-  /** Result of gridApi.toJSON() — the outer 3-column shell. */
+/**
+ * Layout persistence is split into two stores:
+ *
+ * - **Shell** (`agents:shell:v3`) — the outer 3-column gridview (left rail /
+ *   center / right rail). Workspace-agnostic, one global value per window.
+ * - **Dock** (`agents:dock:project:${workspaceId}` or
+ *   `agents:dock:no-workspace`) — the dockview center cell's panel
+ *   arrangement (chat / terminal / file / plan / diff / search / files-tree).
+ *   Each workspace gets its own snapshot so opening workspace A doesn't drag
+ *   in workspace B's terminals and files.
+ *
+ * Schema bumps invalidate older saved layouts. v2 used a single combined
+ * snapshot under `agents:layout:global`; v3 splits the two and keys dock
+ * per workspace. Old v2 entries are simply ignored (the user falls back to
+ * defaults on first launch after the upgrade).
+ */
+const SCHEMA_VERSION = 3
+
+export interface ShellSnapshot {
+  version: typeof SCHEMA_VERSION
+  /** Result of gridApi.toJSON(). */
   shell: unknown | null
-  /** Result of dockApi.toJSON() — the center-cell panel arrangement. */
+}
+
+export interface DockSnapshot {
+  version: typeof SCHEMA_VERSION
+  /** Result of dockApi.toJSON(). */
   dock: unknown | null
 }
 
-// v1 → v2: added the right-rail gridview cell (DetailsRail). Old snapshots
-// only have left + center cells, so loading them would miss the new rail.
-// Bumping the version invalidates v1 snapshots and falls back to the new
-// 3-cell defaults on first launch after the upgrade.
-const SCHEMA_VERSION = 2
+const SHELL_KEY = "agents:shell:v3"
 
-/**
- * Compute the storage key for the layout snapshot. Today this is a global
- * key. Future: take a `{ workspaceId }` argument and return per-project keys
- * (with a one-shot migration that copies the global value into each project
- * the first time it's opened).
- */
-export function layoutStorageKey(): string {
-  return "agents:layout:global"
+export function shellStorageKey(): string {
+  return SHELL_KEY
 }
 
-export function loadLayoutSnapshot(): AgentsLayoutSnapshot | null {
+export function dockStorageKeyForWorkspace(workspaceId: string | null): string {
+  return workspaceId
+    ? `agents:dock:project:${workspaceId}`
+    : "agents:dock:no-workspace"
+}
+
+/**
+ * Back-compat alias used by the [+] menu's "Reset layout" action — clearing
+ * just this one key drops the global shell layout, which is enough to land
+ * the user back on defaults on next reload. Per-workspace dock keys are
+ * pruned lazily; a stale dock snapshot for a workspace whose entities don't
+ * exist anymore is harmless because tryRestoreDock filters unknown panels.
+ */
+export function layoutStorageKey(): string {
+  return SHELL_KEY
+}
+
+export function loadShellSnapshot(): ShellSnapshot | null {
   try {
-    const raw = localStorage.getItem(layoutStorageKey())
+    const raw = localStorage.getItem(SHELL_KEY)
     if (!raw) return null
-    const parsed = JSON.parse(raw) as AgentsLayoutSnapshot
+    const parsed = JSON.parse(raw) as ShellSnapshot
     if (parsed?.version !== SCHEMA_VERSION) return null
     return parsed
   } catch {
@@ -36,19 +65,165 @@ export function loadLayoutSnapshot(): AgentsLayoutSnapshot | null {
   }
 }
 
-export function saveLayoutSnapshot(snapshot: AgentsLayoutSnapshot): void {
+export function saveShellSnapshot(snapshot: ShellSnapshot): void {
   try {
-    localStorage.setItem(layoutStorageKey(), JSON.stringify(snapshot))
+    localStorage.setItem(SHELL_KEY, JSON.stringify(snapshot))
   } catch (err) {
-    // Quota or other storage error — drop silently; the layout will rebuild
-    // from defaults on next reload.
-    console.warn("[layout] Failed to persist layout snapshot:", err)
+    console.warn("[layout] Failed to persist shell snapshot:", err)
+  }
+}
+
+export function loadDockSnapshotForWorkspace(
+  workspaceId: string | null,
+): DockSnapshot | null {
+  const key = dockStorageKeyForWorkspace(workspaceId)
+  try {
+    const raw = localStorage.getItem(key)
+    if (!raw) return null
+    const parsed = JSON.parse(raw) as DockSnapshot
+    if (parsed?.version !== SCHEMA_VERSION) return null
+    return parsed
+  } catch {
+    return null
+  }
+}
+
+export function saveDockSnapshotForWorkspace(
+  workspaceId: string | null,
+  snapshot: DockSnapshot,
+): void {
+  const key = dockStorageKeyForWorkspace(workspaceId)
+  try {
+    localStorage.setItem(key, JSON.stringify(snapshot))
+  } catch (err) {
+    console.warn("[layout] Failed to persist dock snapshot:", err)
+  }
+}
+
+export function captureShell(grid: GridviewApi | null): ShellSnapshot {
+  return {
+    version: SCHEMA_VERSION,
+    shell: grid ? grid.toJSON() : null,
+  }
+}
+
+export function captureDock(dock: DockviewApi | null): DockSnapshot {
+  return {
+    version: SCHEMA_VERSION,
+    dock: dock ? dock.toJSON() : null,
+  }
+}
+
+export function tryRestoreShell(
+  grid: GridviewApi | null,
+  snapshot: ShellSnapshot | null,
+): boolean {
+  if (!snapshot?.shell || !grid) return false
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    grid.fromJSON(snapshot.shell as any)
+    return true
+  } catch (err) {
+    console.warn("[layout] Failed to restore gridview layout:", err)
+    return false
+  }
+}
+
+export function tryRestoreDock(
+  dock: DockviewApi | null,
+  snapshot: DockSnapshot | null,
+): boolean {
+  if (!snapshot?.dock || !dock) return false
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    dock.fromJSON(snapshot.dock as any)
+    return true
+  } catch (err) {
+    console.warn("[layout] Failed to restore dockview layout:", err)
+    return false
   }
 }
 
 /**
- * Capture the current layout into a snapshot. Either api may be null.
+ * Returns a debounced layout-saver. Each `schedule(grid, dock, workspaceId)`
+ * call buffers the latest state and writes after `delayMs` ms of quiet —
+ * shell goes to the global key, dock goes to the workspace-specific key.
+ *
+ * The workspaceId argument is captured per-call so a save scheduled before
+ * a workspace switch still writes to the *outgoing* workspace's key, not
+ * the new one. (Workspace transitions also flush synchronously — see the
+ * AgentsLayout transition effect — so this matters for in-flight debounced
+ * saves only.)
  */
+export function makeDebouncedSaver(delayMs = 300): {
+  schedule: (
+    grid: GridviewApi | null,
+    dock: DockviewApi | null,
+    workspaceId: string | null,
+  ) => void
+  flush: () => void
+  cancel: () => void
+} {
+  let timer: ReturnType<typeof setTimeout> | null = null
+  let pendingGrid: GridviewApi | null = null
+  let pendingDock: DockviewApi | null = null
+  let pendingWorkspaceId: string | null = null
+
+  const flush = () => {
+    if (timer) {
+      clearTimeout(timer)
+      timer = null
+    }
+    saveShellSnapshot(captureShell(pendingGrid))
+    saveDockSnapshotForWorkspace(pendingWorkspaceId, captureDock(pendingDock))
+  }
+
+  const cancel = () => {
+    if (timer) {
+      clearTimeout(timer)
+      timer = null
+    }
+  }
+
+  const schedule = (
+    grid: GridviewApi | null,
+    dock: DockviewApi | null,
+    workspaceId: string | null,
+  ) => {
+    pendingGrid = grid
+    pendingDock = dock
+    pendingWorkspaceId = workspaceId
+    if (timer) clearTimeout(timer)
+    timer = setTimeout(flush, delayMs)
+  }
+
+  return { schedule, flush, cancel }
+}
+
+// ---------------------------------------------------------------------------
+// Back-compat shim for the previous combined snapshot type. Some callers in
+// agents-layout.tsx (the ShellContext) still talk in terms of a single
+// snapshot at mount; keep the type exported and the read function shaped
+// identically so we don't ripple changes across unrelated files. New code
+// should prefer the split functions above.
+// ---------------------------------------------------------------------------
+
+export interface AgentsLayoutSnapshot {
+  version: typeof SCHEMA_VERSION
+  shell: unknown | null
+  dock: unknown | null
+}
+
+export function loadLayoutSnapshot(): AgentsLayoutSnapshot | null {
+  const shell = loadShellSnapshot()
+  if (!shell) return null
+  return { version: SCHEMA_VERSION, shell: shell.shell, dock: null }
+}
+
+export function saveLayoutSnapshot(snapshot: AgentsLayoutSnapshot): void {
+  saveShellSnapshot({ version: SCHEMA_VERSION, shell: snapshot.shell })
+}
+
 export function captureSnapshot(
   grid: GridviewApi | null,
   dock: DockviewApi | null,
@@ -60,11 +235,6 @@ export function captureSnapshot(
   }
 }
 
-/**
- * Try to restore a previously-saved layout. Failures are swallowed and the
- * caller should fall back to the imperative `addPanel` defaults — this keeps
- * the boot path resilient if dockview's serialization format changes.
- */
 export function tryRestore(
   grid: GridviewApi | null,
   dock: DockviewApi | null,
@@ -72,11 +242,8 @@ export function tryRestore(
 ): { shell: boolean; dock: boolean } {
   let restoredShell = false
   let restoredDock = false
-
   if (snapshot?.shell && grid) {
     try {
-      // dockview's fromJSON throws if the JSON references components that
-      // aren't registered. Wrap defensively.
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       grid.fromJSON(snapshot.shell as any)
       restoredShell = true
@@ -84,7 +251,6 @@ export function tryRestore(
       console.warn("[layout] Failed to restore gridview layout:", err)
     }
   }
-
   if (snapshot?.dock && dock) {
     try {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -94,46 +260,5 @@ export function tryRestore(
       console.warn("[layout] Failed to restore dockview layout:", err)
     }
   }
-
   return { shell: restoredShell, dock: restoredDock }
-}
-
-/**
- * Returns a debounced layout-saver. The returned function captures the
- * current state of both apis on every call, but writes to localStorage only
- * after `delayMs` ms of quiet — debouncing all the noisy onDidLayoutChange
- * events that fire while the user is dragging a sash.
- */
-export function makeDebouncedSaver(delayMs = 300): {
-  schedule: (grid: GridviewApi | null, dock: DockviewApi | null) => void
-  flush: () => void
-  cancel: () => void
-} {
-  let timer: ReturnType<typeof setTimeout> | null = null
-  let pendingGrid: GridviewApi | null = null
-  let pendingDock: DockviewApi | null = null
-
-  const flush = () => {
-    if (timer) {
-      clearTimeout(timer)
-      timer = null
-    }
-    saveLayoutSnapshot(captureSnapshot(pendingGrid, pendingDock))
-  }
-
-  const cancel = () => {
-    if (timer) {
-      clearTimeout(timer)
-      timer = null
-    }
-  }
-
-  const schedule = (grid: GridviewApi | null, dock: DockviewApi | null) => {
-    pendingGrid = grid
-    pendingDock = dock
-    if (timer) clearTimeout(timer)
-    timer = setTimeout(flush, delayMs)
-  }
-
-  return { schedule, flush, cancel }
 }

@@ -6386,13 +6386,20 @@ Make sure to preserve all functionality from both branches when resolving confli
     diffViewRef.current?.markAllUnviewed()
   }, [])
 
-  // Initialize store when chat data loads
+  // Initialize store when chat data loads. Each WorkspaceDockShell stays
+  // mounted across workspace switches (so terminals / chat streams
+  // survive), which means several ChatViews from different workspaces can
+  // exist simultaneously. Only the *active* workspace's ChatView should
+  // touch the global sub-chat store — otherwise inactive workspaces would
+  // clobber the active one's slice.
   useEffect(() => {
     if (!agentChat) return
+    if (chatId !== selectedChatId) return
 
     const store = useAgentSubChatStore.getState()
 
-    // Only initialize if chatId changed
+    // setChatId is also driven by agents-layout's top-level effect; this
+    // local guard is a belt-and-braces check.
     if (store.chatId !== chatId) {
       store.setChatId(chatId)
     }
@@ -6471,7 +6478,7 @@ Make sure to preserve all functionality from both branches when resolving confli
         freshState.setActiveSubChat(validOpenIds[0])
       }
     }
-  }, [agentChat, chatId])
+  }, [agentChat, chatId, selectedChatId])
 
   // Auto-detect plan path from ACTIVE sub-chat messages when sub-chat changes
   // This ensures the plan sidebar shows the correct plan for the active sub-chat only

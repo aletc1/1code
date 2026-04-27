@@ -1,41 +1,52 @@
 import { useEffect } from "react"
-import { useAtomValue } from "jotai"
-import { selectedAgentChatIdAtom } from "../agents/atoms"
+import type { DockviewApi } from "dockview-react"
 import { useAgentSubChatStore } from "../agents/stores/sub-chat-store"
-import { useDockApi } from "./dock-context"
 
 /**
- * ChatPanelSync — keeps the dockview's `chat:*` panels in lockstep with the
- * sub-chat store's `openSubChatIds` / `activeSubChatId`.
+ * ChatPanelSync — keeps a workspace's dockview chat panels (`chat:*`) in
+ * lockstep with the sub-chat store's `openSubChatIds` / `activeSubChatId`.
  *
- * Responsibilities:
- * 1. When the user picks a chat in the left rail (selectedAgentChatId
- *    changes): close the singleton "main" placeholder and open one
- *    `chat:${subChatId}` panel for every entry in `openSubChatIds`.
- * 2. When the store's open list changes (a new sub-chat is opened, an old
- *    one is closed via the rail): mirror that into dockview by adding /
- *    closing panels.
- * 3. When `activeSubChatId` changes from outside dockview (e.g. via a
- *    click in the chats list, or programmatic switch): make the matching
- *    panel the active dockview panel.
+ * One instance is mounted per `WorkspaceDockShell`. Only the *active*
+ * workspace's instance runs (others bail via the `active` prop), so the
+ * inactive workspaces' DockShells stay frozen with whatever panels they
+ * had — preserving terminals, chat streams, scroll positions, etc.
  *
- * The opposite direction (dockview tab close → store, dockview tab focus
- * → store) is handled inside ChatPanel + DockShell.onDidRemovePanel so
- * the user's interactions with native tabs feed back into the store.
+ * Responsibilities while active:
+ * 1. When the user picks no chat (`selectedChatId === null`): close any
+ *    `chat:*` panels and ensure the `main` placeholder is mounted.
+ * 2. When a chat is selected and we're its WorkspaceDockShell: open one
+ *    `chat:${subChatId}` panel for every entry in `openSubChatIds`, and
+ *    close any `chat:*` panel that's no longer in that list.
+ * 3. When `activeSubChatId` changes: make the matching panel the active
+ *    dockview panel.
  *
- * This component renders nothing — it's purely an effect host. Mount it
- * inside the dock provider tree.
+ * Inactive instances are no-ops — their dockview keeps every panel as it
+ * was when the workspace was last active.
  */
-export function ChatPanelSync() {
-  const dockApi = useDockApi()
-  const selectedChatId = useAtomValue(selectedAgentChatIdAtom)
+export interface ChatPanelSyncProps {
+  /** This shell's workspace id. Used to gate effects: only the workspace
+   *  matching the global `selectedChatId` reconciles its dockview. */
+  workspaceId: string | null
+  /** When false, every effect bails — the inactive shell stays frozen. */
+  active: boolean
+  /** The dockview instance owned by this shell. */
+  dockApi: DockviewApi | null
+}
+
+export function ChatPanelSync({
+  workspaceId,
+  active,
+  dockApi,
+}: ChatPanelSyncProps) {
   const openSubChatIds = useAgentSubChatStore((s) => s.openSubChatIds)
   const activeSubChatId = useAgentSubChatStore((s) => s.activeSubChatId)
   const allSubChats = useAgentSubChatStore((s) => s.allSubChats)
+  const storeChatId = useAgentSubChatStore((s) => s.chatId)
 
-  // (1) No chat selected → ensure "main" placeholder, drop any chat panels.
+  // Effect (1) — no chat selected: close chat panels, ensure `main`.
   useEffect(() => {
-    if (!dockApi || selectedChatId) return
+    if (!active || !dockApi) return
+    if (workspaceId !== null) return
     for (const panel of dockApi.panels) {
       if (panel.id.startsWith("chat:")) panel.api.close()
     }
@@ -46,19 +57,20 @@ export function ChatPanelSync() {
         title: "Workspace",
       })
     }
-  }, [dockApi, selectedChatId])
+  }, [active, dockApi, workspaceId])
 
-  // (2) Chat selected → sync openSubChatIds with chat: panels.
+  // Effect (2) — workspace selected: reconcile chat panels.
   useEffect(() => {
-    if (!dockApi || !selectedChatId) return
+    if (!active || !dockApi || !workspaceId) return
+    // The store loads its slice on `setChatId`; if it lags behind the
+    // workspace switch we bail to wait for the next render.
+    if (storeChatId !== workspaceId) return
 
-    // Drop the "main" placeholder once we have at least one sub-chat.
     if (openSubChatIds.length > 0) {
       const main = dockApi.getPanel("main")
       if (main) main.api.close()
     }
 
-    // Open panels for any sub-chat that's in the store but not in dockview.
     for (const subChatId of openSubChatIds) {
       const id = `chat:${subChatId}`
       if (dockApi.getPanel(id)) continue
@@ -69,13 +81,12 @@ export function ChatPanelSync() {
         title: sc?.name || "Conversation",
         params: {
           subChatId,
-          chatId: selectedChatId,
+          chatId: workspaceId,
           name: sc?.name,
         },
       })
     }
 
-    // Close panels whose sub-chat is no longer in the open list.
     for (const panel of dockApi.panels) {
       if (!panel.id.startsWith("chat:")) continue
       const subChatId = panel.id.slice("chat:".length)
@@ -83,14 +94,16 @@ export function ChatPanelSync() {
         panel.api.close()
       }
     }
-  }, [dockApi, selectedChatId, openSubChatIds, allSubChats])
+  }, [active, dockApi, workspaceId, storeChatId, openSubChatIds, allSubChats])
 
-  // (3) activeSubChatId → make matching panel the active dockview panel.
+  // Effect (3) — active sub-chat → setActive on the matching panel.
   useEffect(() => {
-    if (!dockApi || !activeSubChatId) return
+    if (!active || !dockApi || !workspaceId) return
+    if (storeChatId !== workspaceId) return
+    if (!activeSubChatId) return
     const panel = dockApi.getPanel(`chat:${activeSubChatId}`)
     if (panel && !panel.api.isActive) panel.api.setActive()
-  }, [dockApi, activeSubChatId])
+  }, [active, dockApi, workspaceId, storeChatId, activeSubChatId])
 
   return null
 }

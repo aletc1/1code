@@ -13,6 +13,7 @@ export {
   widgetPanelMapAtom,
   pinnedPanelIdsAtom,
   dockReadyAtom,
+  mountedWorkspaceIdsAtom,
   type PanelEntity,
   type PanelKind,
 } from "./atoms"
@@ -22,6 +23,7 @@ export { useWidgetPanel, type WidgetPanelHandle } from "./use-widget-panel"
 export { usePanelActions, type PanelActions } from "./use-panel-actions"
 export { DockHeaderActions } from "./dock-header-actions"
 export { ChatPanelSync } from "./chat-panel-sync"
+export { WorkspaceDockShell } from "./workspace-dock-shell"
 export { RenamableTab, RenameDispatchHost } from "./renamable-tab"
 export { ChatTabArchiveHost } from "./chat-tab-archive"
 export { TerminalTabCloseHost } from "./terminal-tab-close"
@@ -32,5 +34,15 @@ export {
   tryRestore,
   makeDebouncedSaver,
   layoutStorageKey,
+  loadShellSnapshot,
+  saveShellSnapshot,
+  loadDockSnapshotForWorkspace,
+  saveDockSnapshotForWorkspace,
+  captureDock,
+  captureShell,
+  tryRestoreShell,
+  tryRestoreDock,
   type AgentsLayoutSnapshot,
+  type DockSnapshot,
+  type ShellSnapshot,
 } from "./persistence"

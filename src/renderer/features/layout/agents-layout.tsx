@@ -55,17 +55,18 @@ import {
   detailsSidebarWidthAtom,
 } from "../details-sidebar/atoms"
 import {
-  DockShell,
   DockProvider,
-  ChatPanelSync,
+  WorkspaceDockShell,
   RenameDispatchHost,
   ChatTabArchiveHost,
   TerminalTabCloseHost,
-  loadLayoutSnapshot,
-  makeDebouncedSaver,
-  tryRestore,
+  loadShellSnapshot,
+  saveShellSnapshot,
+  captureShell,
+  tryRestoreShell,
+  mountedWorkspaceIdsAtom,
   type DockHandles,
-  type AgentsLayoutSnapshot,
+  type ShellSnapshot,
 } from "../dock"
 import type { DockviewApi } from "dockview-react"
 import { useUpdateChecker } from "../../lib/hooks/use-update-checker"
@@ -97,12 +98,21 @@ interface ShellContextValue {
   } | null
   onSignOut: () => Promise<void>
   onToggleSidebar: () => void
-  setDockApi: (api: DockviewApi) => void
-  /** Layout snapshot loaded once at mount. Panels read this on dockview-ready
-   *  to restore previous arrangement before falling back to defaults. */
-  layoutSnapshot: AgentsLayoutSnapshot | null
-  /** Schedule a debounced save of the current layout. */
-  scheduleLayoutSave: () => void
+  /** Each workspace's `WorkspaceDockShell` registers its dockApi here so
+   *  the layout can route the global DockProvider to whichever shell is
+   *  active. Workspaces stay mounted across switches, so multiple
+   *  registrations are valid simultaneously — keyed by workspaceId. */
+  registerWorkspaceDockApi: (
+    workspaceId: string | null,
+    api: DockviewApi,
+  ) => void
+  unregisterWorkspaceDockApi: (workspaceId: string | null) => void
+  /** Outer-shell (gridview) snapshot loaded once at mount. Workspace-
+   *  agnostic — left/center/right widths and visibility. */
+  shellSnapshot: ShellSnapshot | null
+  /** Schedule a debounced save of the gridview layout (shell only — each
+   *  WorkspaceDockShell handles its own dock save). */
+  scheduleShellSave: () => void
 }
 
 const ShellContext = createContext<ShellContextValue | null>(null)
@@ -191,48 +201,31 @@ function useEffectiveSystemView():
 }
 
 function CenterRailPanel(_props: IGridviewPanelProps) {
-  const { setDockApi, layoutSnapshot, scheduleLayoutSave } = useShellContext()
+  const { registerWorkspaceDockApi, unregisterWorkspaceDockApi } =
+    useShellContext()
   const systemView = useEffectiveSystemView()
   const betaAutomationsEnabled = useAtomValue(betaAutomationsEnabledAtom)
-
-  const handleDockReady = useCallback(
-    (api: DockviewApi) => {
-      setDockApi(api)
-
-      // Try to restore the prior dock layout. fromJSON throws if it references
-      // unregistered components, so wrap defensively (handled inside tryRestore).
-      const { dock: restored } = tryRestore(null, api, layoutSnapshot)
-
-      if (!restored && !api.getPanel("main")) {
-        // First-run / unrestorable: mount the singleton workspace shell.
-        api.addPanel({
-          id: "main",
-          component: "main",
-          title: "Workspace",
-        })
-      } else if (restored && !api.getPanel("main")) {
-        // Restored snapshot but the workspace shell wasn't in it (older
-        // snapshot or the user closed it). Re-add to keep the chat reachable.
-        api.addPanel({
-          id: "main",
-          component: "main",
-          title: "Workspace",
-        })
-      }
-
-      // Persist on every layout change (debounced inside the saver).
-      api.onDidLayoutChange(() => scheduleLayoutSave())
-    },
-    [setDockApi, layoutSnapshot, scheduleLayoutSave],
-  )
+  const selectedChatId = useAtomValue(selectedAgentChatIdAtom)
+  const mountedWorkspaceIds = useAtomValue(mountedWorkspaceIdsAtom)
 
   return (
     <div className="relative h-full w-full overflow-hidden flex flex-col min-w-0">
-      {/* DockShell stays mounted under the overlay so chat tabs / terminal
-          PTYs / dock layout state survive a settings/usage detour. The
-          overlay is opaque (bg-background) and stops pointer events from
-          reaching dockview while a system view is active. */}
-      <DockShell onApiReady={handleDockReady} className="h-full w-full" />
+      {/* One DockShell per workspace the user has visited this session,
+          stacked absolutely. The active one is fully visible /
+          interactive; the rest are invisible / non-interactive but stay
+          mounted so terminal PTYs, chat streams, xterm scrollback, scroll
+          positions and form drafts all survive a workspace switch. */}
+      {mountedWorkspaceIds.map((id) => (
+        <WorkspaceDockShell
+          key={id}
+          workspaceId={id}
+          active={id === selectedChatId}
+          onDockApiReady={registerWorkspaceDockApi}
+          onDockApiDisposed={unregisterWorkspaceDockApi}
+        />
+      ))}
+      {/* System-wide views overlay the dockview surface — they don't
+          belong to any workspace, so they shouldn't render inside a tab. */}
       {systemView !== null && (
         <div className="absolute inset-0 z-10 bg-background overflow-hidden">
           {systemView === "settings" && <SettingsContent />}
@@ -480,11 +473,13 @@ export function AgentsLayout() {
     setCodexOnboardingCompleted,
   ])
 
-  // Clear sub-chat store when no chat is selected
+  // Source of truth for the store's "current workspace". Each ChatView
+  // used to call setChatId itself, but with multiple WorkspaceDockShells
+  // mounted simultaneously that race — so we centralize it here. The
+  // store is always scoped to the currently-selected workspace; inactive
+  // workspaces' state lives in localStorage until they become active.
   useEffect(() => {
-    if (!selectedChatId) {
-      setChatId(null)
-    }
+    setChatId(selectedChatId)
   }, [selectedChatId, setChatId])
 
   // Chat search toggle
@@ -537,26 +532,78 @@ export function AgentsLayout() {
     }
   }, [dockviewThemeClass])
 
-  // Layout persistence — load once at mount, save (debounced) on every change.
-  const layoutSnapshot = useMemo(() => loadLayoutSnapshot(), [])
-  const layoutSaverRef = useRef(makeDebouncedSaver(300))
-  const [dockApi, setDockApi] = useState<DockviewApi | null>(null)
+  // Layout persistence:
+  // - Shell snapshot (the outer 3-column gridview) is global, loaded once.
+  // - Dock snapshot is per-workspace and owned by each WorkspaceDockShell.
+  //   It saves to its own LS key and restores on mount.
+  const shellSnapshot = useMemo(() => loadShellSnapshot(), [])
 
-  const scheduleLayoutSave = useCallback(() => {
-    layoutSaverRef.current.schedule(gridApiRef.current, dockApi)
-  }, [dockApi])
+  // Per-workspace dock api registry. Each WorkspaceDockShell calls into
+  // this when its dockview becomes ready; the global DockProvider then
+  // routes consumers (`usePanelActions`, `addOrFocus`, `useWidgetPanel`)
+  // to whichever shell is active.
+  const [workspaceDockApis, setWorkspaceDockApis] = useState<
+    Record<string, DockviewApi>
+  >({})
 
-  // Flush any pending save on unmount (e.g. window close).
+  const registerWorkspaceDockApi = useCallback(
+    (workspaceId: string | null, api: DockviewApi) => {
+      const key = workspaceId ?? "__none__"
+      setWorkspaceDockApis((prev) => ({ ...prev, [key]: api }))
+    },
+    [],
+  )
+
+  const unregisterWorkspaceDockApi = useCallback(
+    (workspaceId: string | null) => {
+      const key = workspaceId ?? "__none__"
+      setWorkspaceDockApis((prev) => {
+        if (!(key in prev)) return prev
+        const next = { ...prev }
+        delete next[key]
+        return next
+      })
+    },
+    [],
+  )
+
+  // Track which workspaces have been visited this session — that's the
+  // set whose WorkspaceDockShells stay mounted. Append on first visit;
+  // entries persist for the lifetime of the window so terminals / chat
+  // streams survive any number of switches.
+  const setMountedWorkspaceIds = useSetAtom(mountedWorkspaceIdsAtom)
   useEffect(() => {
-    const saver = layoutSaverRef.current
-    return () => saver.flush()
+    if (!selectedChatId) return
+    setMountedWorkspaceIds((prev) =>
+      prev.includes(selectedChatId) ? prev : [...prev, selectedChatId],
+    )
+  }, [selectedChatId, setMountedWorkspaceIds])
+
+  // Debounced shell-only saver. The dock part is handled per workspace
+  // inside each WorkspaceDockShell.
+  const shellSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const scheduleShellSave = useCallback(() => {
+    if (shellSaveTimerRef.current) clearTimeout(shellSaveTimerRef.current)
+    shellSaveTimerRef.current = setTimeout(() => {
+      saveShellSnapshot(captureShell(gridApiRef.current))
+    }, 300)
+  }, [])
+
+  // Flush any pending shell save on unmount (e.g. window close).
+  useEffect(() => {
+    return () => {
+      if (shellSaveTimerRef.current) {
+        clearTimeout(shellSaveTimerRef.current)
+        saveShellSnapshot(captureShell(gridApiRef.current))
+      }
+    }
   }, [])
 
   const handleGridReady = useCallback(
     ({ api }: GridviewReadyEvent) => {
       gridApiRef.current = api
 
-      const { shell: restored } = tryRestore(api, null, layoutSnapshot)
+      const restored = tryRestoreShell(api, shellSnapshot)
 
       if (!restored) {
         // First-run / unrestorable: build the default 3-cell layout.
@@ -615,13 +662,13 @@ export function AgentsLayout() {
           const w = right.api.width
           if (w && w !== detailsWidth) setDetailsWidth(w)
         }
-        scheduleLayoutSave()
+        scheduleShellSave()
       })
     },
     // Intentionally only on mount — subsequent atom changes are pushed via the
     // useEffect below; this callback only runs once when gridview is ready.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [layoutSnapshot, scheduleLayoutSave],
+    [shellSnapshot, scheduleShellSave],
   )
 
   // Sync sidebar open state with the gridview left panel.
@@ -652,23 +699,38 @@ export function AgentsLayout() {
     }
   }, [detailsOpen, selectedChatId])
 
-  // (DockviewApi state is declared earlier so the layout saver can capture it.)
+  // The active workspace's dockApi — that's what `usePanelActions`,
+  // `addOrFocus`, etc. should target. When the user switches workspaces,
+  // the React tree doesn't tear down (each WorkspaceDockShell stays
+  // mounted with its own dockview); we just point the global DockProvider
+  // at the new active shell.
+  const activeDockApi =
+    workspaceDockApis[selectedChatId ?? "__none__"] ?? null
 
   const shellCtxValue = useMemo<ShellContextValue>(
     () => ({
       desktopUser,
       onSignOut: handleSignOut,
       onToggleSidebar: handleCloseSidebar,
-      setDockApi,
-      layoutSnapshot,
-      scheduleLayoutSave,
+      registerWorkspaceDockApi,
+      unregisterWorkspaceDockApi,
+      shellSnapshot,
+      scheduleShellSave,
     }),
-    [desktopUser, handleSignOut, handleCloseSidebar, layoutSnapshot, scheduleLayoutSave],
+    [
+      desktopUser,
+      handleSignOut,
+      handleCloseSidebar,
+      registerWorkspaceDockApi,
+      unregisterWorkspaceDockApi,
+      shellSnapshot,
+      scheduleShellSave,
+    ],
   )
 
   const dockHandles = useMemo<DockHandles>(
-    () => ({ dock: dockApi, grid: gridApiRef.current }),
-    [dockApi],
+    () => ({ dock: activeDockApi, grid: gridApiRef.current }),
+    [activeDockApi],
   )
 
   return (
@@ -683,7 +745,9 @@ export function AgentsLayout() {
       />
       <CodexLoginModal />
       <DockProvider value={dockHandles}>
-        <ChatPanelSync />
+        {/* ChatPanelSync runs *inside* each WorkspaceDockShell now —
+            scoped to that workspace and gated by `active` — so the
+            globally-mounted version is gone. */}
         <RenameDispatchHost />
         <ChatTabArchiveHost />
         <TerminalTabCloseHost />
