@@ -5,6 +5,8 @@
 
 import type { SettingsTab } from "../../../lib/atoms"
 import type { DesktopView } from "../atoms"
+import { appStore } from "../../../lib/jotai-store"
+import { spotlightOpenAtom } from "../../spotlight/atoms"
 
 // ============================================================================
 // TYPES
@@ -24,7 +26,6 @@ export interface AgentActionContext {
   // UI states
   setSidebarOpen?: (open: boolean | ((prev: boolean) => boolean)) => void
   setSettingsActiveTab?: (tab: SettingsTab) => void
-  setFileSearchDialogOpen?: (open: boolean) => void
   toggleChatSearch?: () => void
 
   // Data
@@ -198,14 +199,15 @@ const openFileInEditorAction: AgentActionDefinition = {
   },
 }
 
-const fileSearchAction: AgentActionDefinition = {
-  id: "file-search",
-  label: "Go to file",
-  description: "Search and open a file in the workspace",
-  category: "navigation",
-  hotkey: "cmd+p",
-  handler: async (context) => {
-    context.setFileSearchDialogOpen?.(true)
+const openSpotlightAction: AgentActionDefinition = {
+  id: "open-spotlight",
+  label: "Open Spotlight",
+  description: "Open the Spotlight command palette",
+  category: "general",
+  hotkey: ["cmd+k", "cmd+p"],
+  handler: async () => {
+    // Toggle — pressing the hotkey while Spotlight is open closes it.
+    appStore.set(spotlightOpenAtom, !appStore.get(spotlightOpenAtom))
     return { success: true }
   },
 }
@@ -284,7 +286,7 @@ export const AGENT_ACTIONS: Record<string, AgentActionDefinition> = {
   "open-inbox": openInboxAction,
   "open-in-editor": openInEditorAction,
   "open-file-in-editor": openFileInEditorAction,
-  "file-search": fileSearchAction,
+  "open-spotlight": openSpotlightAction,
 }
 
 export function getAgentAction(id: string): AgentActionDefinition | undefined {

@@ -13,6 +13,8 @@ import {
 } from "./agents-actions"
 import type { SettingsTab, CustomHotkeysConfig } from "../../../lib/atoms"
 import { getResolvedHotkey, type ShortcutActionId } from "../../../lib/hotkeys"
+import { appStore } from "../../../lib/jotai-store"
+import { spotlightOpenAtom } from "../../spotlight/atoms"
 
 // ============================================================================
 // ACTION ID MAPPING
@@ -25,6 +27,7 @@ import { getResolvedHotkey, type ShortcutActionId } from "../../../lib/hotkeys"
 const SHORTCUT_TO_ACTION_MAP: Record<ShortcutActionId, string> = {
   "show-shortcuts": "open-shortcuts",
   "open-settings": "open-settings",
+  "open-spotlight": "open-spotlight",
   "toggle-sidebar": "toggle-sidebar",
   "toggle-details": "toggle-details",
   "undo-archive": "undo-archive",
@@ -52,7 +55,6 @@ const SHORTCUT_TO_ACTION_MAP: Record<ShortcutActionId, string> = {
   "toggle-terminal": "toggle-terminal",
   "open-diff": "open-diff",
   "create-pr": "create-pr",
-  "file-search": "file-search",
   "open-search": "open-search",
   "voice-input": "voice-input", // Handled directly in chat-input-area.tsx
   "open-in-editor": "open-in-editor",
@@ -116,7 +118,6 @@ export interface AgentsHotkeysManagerConfig {
   setDesktopView?: (view: import("../atoms").DesktopView) => void
   setSidebarOpen?: (open: boolean | ((prev: boolean) => boolean)) => void
   setSettingsActiveTab?: (tab: SettingsTab) => void
-  setFileSearchDialogOpen?: (open: boolean) => void
   toggleChatSearch?: () => void
   selectedChatId?: string | null
   customHotkeysConfig?: CustomHotkeysConfig
@@ -150,7 +151,6 @@ export function useAgentsHotkeys(
       setDesktopView: config.setDesktopView,
       setSidebarOpen: config.setSidebarOpen,
       setSettingsActiveTab: config.setSettingsActiveTab,
-      setFileSearchDialogOpen: config.setFileSearchDialogOpen,
       toggleChatSearch: config.toggleChatSearch,
       selectedChatId: config.selectedChatId,
     }),
@@ -161,7 +161,6 @@ export function useAgentsHotkeys(
       config.setDesktopView,
       config.setSidebarOpen,
       config.setSettingsActiveTab,
-      config.setFileSearchDialogOpen,
       config.toggleChatSearch,
       config.selectedChatId,
     ],
@@ -174,6 +173,13 @@ export function useAgentsHotkeys(
       const action = availableActions.find((a) => a.id === actionId)
 
       if (!action) return
+
+      // Close Spotlight if a non-Spotlight hotkey fires while it's open —
+      // user wants the keystroke to act on the underlying app, not be
+      // shadowed by the open palette.
+      if (actionId !== "open-spotlight" && appStore.get(spotlightOpenAtom)) {
+        appStore.set(spotlightOpenAtom, false)
+      }
 
       await executeAgentAction(actionId, context, "hotkey")
     },
@@ -270,12 +276,21 @@ export function useAgentsHotkeys(
         }
       }
 
-      // Check file-search hotkey (Cmd+P)
-      const fileSearchHotkey = getHotkeyForAction("file-search")
-      if (fileSearchHotkey && matchesHotkey(e, fileSearchHotkey)) {
+      // Check open-spotlight hotkey (Cmd+K and Cmd+P).
+      // The registry stores the primary as defaultKeys and the alt as
+      // altKeys; getResolvedHotkey returns the primary, so check the
+      // alternative explicitly.
+      const openSpotlightHotkey = getHotkeyForAction("open-spotlight")
+      if (openSpotlightHotkey && matchesHotkey(e, openSpotlightHotkey)) {
         e.preventDefault()
         e.stopPropagation()
-        handleHotkeyAction("file-search")
+        handleHotkeyAction("open-spotlight")
+        return
+      }
+      if (matchesHotkey(e, "cmd+p")) {
+        e.preventDefault()
+        e.stopPropagation()
+        handleHotkeyAction("open-spotlight")
         return
       }
 
@@ -313,6 +328,7 @@ export function useAgentsHotkeys(
           action.id !== "toggle-sidebar" &&
           action.id !== "open-shortcuts" &&
           action.id !== "open-settings" &&
+          action.id !== "open-spotlight" &&
           action.id !== "toggle-chat-search",
       ),
     [],
@@ -351,8 +367,13 @@ export function useAgentsHotkeys(
         target.tagName === "TEXTAREA" ||
         target.isContentEditable
 
+      // When Spotlight is open, the focused "input" is just its search
+      // field — global hotkeys should still fire (and close Spotlight via
+      // handleHotkeyAction) instead of being silently swallowed.
+      const spotlightOpen = appStore.get(spotlightOpenAtom)
+
       for (const mapping of hotkeyMappings) {
-        if (isInInput && !mapping.isGlobal) continue
+        if (isInInput && !mapping.isGlobal && !spotlightOpen) continue
 
         for (const hotkey of mapping.hotkeys) {
           if (matchesHotkey(e, hotkey)) {

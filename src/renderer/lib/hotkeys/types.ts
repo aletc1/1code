@@ -5,6 +5,7 @@ export type ShortcutActionId =
   // General
   | "show-shortcuts"
   | "open-settings"
+  | "open-spotlight"
   | "toggle-sidebar"
   | "toggle-details"
   | "undo-archive"
@@ -30,7 +31,6 @@ export type ShortcutActionId =
   | "toggle-terminal"
   | "open-diff"
   | "create-pr"
-  | "file-search"
   | "open-search"
   | "voice-input"
   | "open-in-editor"

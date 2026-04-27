@@ -1299,9 +1299,6 @@ export const fileViewerBracketPairsAtom = atomWithStorage<boolean>(
   { getOnInit: true },
 )
 
-// File search dialog open state (Cmd+P)
-export const fileSearchDialogOpenAtom = atom<boolean>(false)
-
 // File viewer open state - stores the currently open file path per chatId
 const fileViewerOpenStorageAtom = atom<Record<string, string | null>>({})
 

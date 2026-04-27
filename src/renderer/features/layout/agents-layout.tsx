@@ -29,7 +29,8 @@ import {
   betaKanbanEnabledAtom,
   betaAutomationsEnabledAtom,
 } from "../../lib/atoms"
-import { selectedAgentChatIdAtom, selectedProjectAtom, selectedDraftIdAtom, showNewChatFormAtom, desktopViewAtom, fileSearchDialogOpenAtom } from "../agents/atoms"
+import { selectedAgentChatIdAtom, selectedProjectAtom, selectedDraftIdAtom, showNewChatFormAtom, desktopViewAtom } from "../agents/atoms"
+import { SpotlightModal } from "../spotlight/spotlight-modal"
 import { trpc } from "../../lib/trpc"
 import { useAgentsHotkeys } from "../agents/lib/agents-hotkeys-manager"
 import { toggleSearchAtom } from "../agents/search"
@@ -310,7 +311,6 @@ export function AgentsLayout() {
   const setSettingsActiveTab = useSetAtom(agentsSettingsDialogActiveTabAtom)
   const setSettingsDialogOpen = useSetAtom(agentsSettingsDialogOpenAtom)
   const desktopView = useAtomValue(desktopViewAtom)
-  const setFileSearchDialogOpen = useSetAtom(fileSearchDialogOpenAtom)
   const [selectedChatId, setSelectedChatId] = useAtom(selectedAgentChatIdAtom)
   const [selectedProject, setSelectedProject] = useAtom(selectedProjectAtom)
   const setSelectedDraftId = useSetAtom(selectedDraftIdAtom)
@@ -497,7 +497,6 @@ export function AgentsLayout() {
     setDesktopView,
     setSidebarOpen,
     setSettingsActiveTab,
-    setFileSearchDialogOpen,
     toggleChatSearch,
     selectedChatId,
     customHotkeysConfig,
@@ -756,6 +755,7 @@ export function AgentsLayout() {
         autoStartAuth={claudeLoginModalConfig.autoStartAuth}
       />
       <CodexLoginModal />
+      <SpotlightModal />
       <DockProvider value={dockHandles}>
         {/* ChatPanelSync runs *inside* each WorkspaceDockShell now —
             scoped to that workspace and gated by `active` — so the

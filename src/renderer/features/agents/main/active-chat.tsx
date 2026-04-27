@@ -92,7 +92,6 @@ import { getStatusIndicator } from "../../changes/utils/status"
 import { detailsSidebarOpenAtom } from "../../details-sidebar/atoms"
 import { DetailsSidebar } from "../../details-sidebar/details-sidebar"
 import { FileViewerSidebar } from "../../file-viewer"
-import { FileSearchDialog } from "../../file-viewer/components/file-search-dialog"
 import { terminalBottomHeightAtom, terminalDisplayModeAtom, terminalSidebarOpenAtomFamily } from "../../terminal/atoms"
 import { TerminalBottomPanelContent, TerminalSidebar } from "../../terminal/terminal-sidebar"
 import { getTerminalScopeKey } from "../../terminal/utils"
@@ -113,7 +112,6 @@ import {
   diffSidebarOpenAtomFamily,
   diffViewDisplayModeAtom,
   expiredUserQuestionsAtom,
-  fileSearchDialogOpenAtom,
   fileViewerDisplayModeAtom,
   fileViewerOpenAtomFamily,
   fileViewerSidebarWidthAtom,
@@ -5043,9 +5041,6 @@ export function ChatView({
   const [fileViewerPath, setFileViewerPath] = useAtom(fileViewerAtom)
   const [fileViewerDisplayMode] = useAtom(fileViewerDisplayModeAtom)
 
-  // File search dialog (Cmd+P)
-  const [fileSearchOpen, setFileSearchOpen] = useAtom(fileSearchDialogOpenAtom)
-
   // Details sidebar state (unified sidebar that combines all right sidebars)
   const [isDetailsSidebarOpen, setIsDetailsSidebarOpen] = useAtom(detailsSidebarOpenAtom)
 
@@ -7664,15 +7659,6 @@ Make sure to preserve all functionality from both branches when resolving confli
     <FileOpenProvider onOpenFile={setFileViewerPath}>
     <TextSelectionProvider>
     {pushDialog}
-    {/* File Search Dialog (Cmd+P) */}
-    {worktreePath && (
-      <FileSearchDialog
-        open={fileSearchOpen}
-        onOpenChange={setFileSearchOpen}
-        projectPath={worktreePath}
-        onSelectFile={setFileViewerPath}
-      />
-    )}
     <div className="flex h-full flex-col">
       {/* Main content */}
       <div className="flex-1 overflow-hidden flex">

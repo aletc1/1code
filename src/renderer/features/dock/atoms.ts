@@ -12,6 +12,20 @@ export type PanelKind =
   | "search"
   | "files-tree"
 
+/**
+ * Snapshot of a single dockview panel — kept in sync by `DockHotkeysHost`
+ * so consumers (e.g. Spotlight's WorkspaceTabsProvider) can list / focus
+ * tabs without needing to be inside `DockProvider`.
+ */
+export interface DockPanelSummary {
+  id: string
+  title: string
+  kind: PanelKind | "main" | string
+  isActive: boolean
+}
+
+export const dockPanelsAtom = atom<DockPanelSummary[]>([])
+
 export interface ChatPanelEntity {
   subChatId: string
   /** Parent chat (workspace) id this sub-chat belongs to. Used by ChatPanel
