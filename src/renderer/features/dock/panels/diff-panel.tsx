@@ -1,6 +1,7 @@
 import { useCallback, useMemo, useRef, useState } from "react"
 import type { IDockviewPanelProps } from "dockview-react"
-import { useAtom, useAtomValue } from "jotai"
+import { toast } from "sonner"
+import { useAtom, useAtomValue, useSetAtom } from "jotai"
 import { ChangesPanel } from "../../changes/changes-panel"
 import {
   AgentDiffView,
@@ -13,8 +14,19 @@ import {
   agentsChangesPanelWidthAtom,
   diffActiveTabAtom,
   selectedCommitAtom,
+  isCreatingPrAtom,
+  pendingPrMessageAtom,
+  pendingReviewMessageAtom,
+  pendingConflictResolutionMessageAtom,
 } from "../../agents/atoms"
-import { trpc } from "../../../lib/trpc"
+import { useAgentSubChatStore } from "../../agents/stores/sub-chat-store"
+import { applyModeDefaultModel } from "../../agents/lib/model-switching"
+import {
+  generatePrMessage,
+  generateReviewMessage,
+} from "../../agents/utils/pr-message"
+import { usePRStatus } from "../../../hooks/usePRStatus"
+import { trpc, trpcClient } from "../../../lib/trpc"
 import type {
   ChangeCategory,
   ChangedFile,
@@ -110,6 +122,44 @@ export function DiffPanel({ params, api }: IDockviewPanelProps<DiffPanelEntity>)
 
   const diffViewRef = useRef<AgentDiffViewRef | null>(null)
   const [viewedCount, setViewedCount] = useState(0)
+  const [isReviewing, setIsReviewing] = useState(false)
+  const [isCreatingPr, setIsCreatingPr] = useAtom(isCreatingPrAtom)
+  const setPendingPrMessage = useSetAtom(pendingPrMessageAtom)
+  const setPendingReviewMessage = useSetAtom(pendingReviewMessageAtom)
+  const setPendingConflictResolutionMessage = useSetAtom(
+    pendingConflictResolutionMessageAtom,
+  )
+
+  // PR status drives the Publish / Merge / Fix-conflicts buttons.
+  const { pr } = usePRStatus({
+    worktreePath: worktreePath ?? undefined,
+    enabled: !!worktreePath,
+  })
+  const hasPrNumber = !!pr?.number
+  const isPrOpen = pr?.state === "open"
+  const hasMergeConflicts = pr?.mergeable === "CONFLICTING"
+
+  const createPrMutation = trpc.changes.createPR.useMutation({
+    onSuccess: () => {
+      toast.success("Opening GitHub to create PR...", { position: "top-center" })
+      void trpcUtils.changes.getStatus.invalidate({
+        worktreePath: worktreePath ?? "",
+      })
+    },
+    onError: (error) => {
+      toast.error(error.message || "Failed to create PR", { position: "top-center" })
+    },
+  })
+
+  const mergePrMutation = trpc.chats.mergePr.useMutation({
+    onSuccess: () => {
+      toast.success("PR merged successfully!", { position: "top-center" })
+      void trpcUtils.chats.getPrStatus.invalidate({ chatId })
+    },
+    onError: (error) => {
+      toast.error(error.message || "Failed to merge PR", { position: "top-center" })
+    },
+  })
 
   const handleClose = useCallback(() => {
     api.close()
@@ -125,6 +175,101 @@ export function DiffPanel({ params, api }: IDockviewPanelProps<DiffPanelEntity>)
       worktreePath: worktreePath ?? "",
     })
   }, [chatId, trpcUtils, worktreePath])
+
+  // Review — sends a "review the diff" prompt to the active sub-chat.
+  // Mirrors active-chat.tsx's handleReview: pulls PR context, switches
+  // the sub-chat to the review-mode model, and seeds
+  // pendingReviewMessageAtom which ChatViewInner consumes and sends.
+  const handleReview = useCallback(async () => {
+    if (!chatId) return
+    setIsReviewing(true)
+    try {
+      const context = await trpcClient.chats.getPrContext.query({ chatId })
+      if (!context) {
+        toast.error("Could not get git context", { position: "top-center" })
+        return
+      }
+      const activeSubChatId = useAgentSubChatStore.getState().activeSubChatId
+      if (!activeSubChatId) {
+        toast.error("No active chat available", { position: "top-center" })
+        return
+      }
+      applyModeDefaultModel(activeSubChatId, "review")
+      const message = generateReviewMessage(context)
+      setPendingReviewMessage({ message, subChatId: activeSubChatId })
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to start review", {
+        position: "top-center",
+      })
+    } finally {
+      setIsReviewing(false)
+    }
+  }, [chatId, setPendingReviewMessage])
+
+  // Create PR — direct mutation (opens GitHub's PR-create page).
+  const handleCreatePrDirect = useCallback(async () => {
+    if (!worktreePath) {
+      toast.error("No workspace path available", { position: "top-center" })
+      return
+    }
+    setIsCreatingPr(true)
+    try {
+      await createPrMutation.mutateAsync({ worktreePath })
+    } finally {
+      setIsCreatingPr(false)
+    }
+  }, [worktreePath, createPrMutation, setIsCreatingPr])
+
+  // Create PR with AI — seeds the pending PR message so the active
+  // sub-chat's agent can write the title / body.
+  const handleCreatePrWithAI = useCallback(async () => {
+    if (!chatId) return
+    setIsCreatingPr(true)
+    try {
+      const activeSubChatId = useAgentSubChatStore.getState().activeSubChatId
+      if (!activeSubChatId) {
+        toast.error("No active chat available", { position: "top-center" })
+        setIsCreatingPr(false)
+        return
+      }
+      const store = useAgentSubChatStore.getState()
+      store.addToOpenSubChats(activeSubChatId)
+      store.setActiveSubChat(activeSubChatId)
+      const context = await trpcClient.chats.getPrContext.query({ chatId })
+      if (!context) {
+        toast.error("Could not get git context", { position: "top-center" })
+        setIsCreatingPr(false)
+        return
+      }
+      const message = generatePrMessage(context)
+      setPendingPrMessage({ message, subChatId: activeSubChatId })
+      // isCreatingPr is reset by ChatViewInner once the message is sent.
+    } catch (err) {
+      toast.error(
+        err instanceof Error ? err.message : "Failed to prepare PR request",
+        { position: "top-center" },
+      )
+      setIsCreatingPr(false)
+    }
+  }, [chatId, setPendingPrMessage, setIsCreatingPr])
+
+  const handleMergePr = useCallback(() => {
+    mergePrMutation.mutate({ chatId, method: "squash" })
+  }, [chatId, mergePrMutation])
+
+  const handleFixConflicts = useCallback(() => {
+    const activeSubChatId = useAgentSubChatStore.getState().activeSubChatId
+    if (!activeSubChatId) return
+    const message = `This PR has merge conflicts with the main branch. Please:
+
+1. First, fetch and merge the latest changes from main branch using git commands
+2. If there are any merge conflicts, resolve them carefully by keeping the correct code from both branches
+3. After resolving conflicts, commit the merge
+4. Push the changes to update the PR
+
+Make sure to preserve all functionality from both branches when resolving conflicts.`
+    setPendingConflictResolutionMessage({ message, subChatId: activeSubChatId })
+  }, [setPendingConflictResolutionMessage])
 
   const handleExpandAll = useCallback(() => {
     diffViewRef.current?.expandAll()
@@ -149,13 +294,6 @@ export function DiffPanel({ params, api }: IDockviewPanelProps<DiffPanelEntity>)
     )
   }
 
-  // The Review / Create PR / Merge / Fix-conflicts callbacks are
-  // intentionally omitted — they need access to the chat transport and
-  // a fistful of mutations that this panel doesn't own. The
-  // DiffSidebarHeader treats those props as optional and just hides the
-  // matching buttons when they're undefined. Users initiate Review /
-  // PR creation from the chat surface as before; the panel is for
-  // *viewing* the diff.
   return (
     <div className="flex flex-col h-full w-full overflow-hidden bg-background">
       <DiffSidebarHeader
@@ -177,6 +315,18 @@ export function DiffPanel({ params, api }: IDockviewPanelProps<DiffPanelEntity>)
         isSyncStatusLoading={isGitStatusLoading}
         aheadOfDefault={gitStatus?.ahead ?? 0}
         behindDefault={gitStatus?.behind ?? 0}
+        onReview={handleReview}
+        isReviewing={isReviewing}
+        onCreatePr={handleCreatePrDirect}
+        isCreatingPr={isCreatingPr}
+        onCreatePrWithAI={handleCreatePrWithAI}
+        isCreatingPrWithAI={isCreatingPr}
+        onMergePr={handleMergePr}
+        isMergingPr={mergePrMutation.isPending}
+        hasPrNumber={hasPrNumber}
+        isPrOpen={isPrOpen}
+        hasMergeConflicts={hasMergeConflicts}
+        onFixConflicts={handleFixConflicts}
         onClose={handleClose}
         onRefresh={handleRefresh}
         onExpandAll={handleExpandAll}
