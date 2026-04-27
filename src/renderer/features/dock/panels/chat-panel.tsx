@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useState } from "react"
-import { useAtomValue } from "jotai"
 import type { IDockviewPanelProps } from "dockview-react"
 import { useAgentSubChatStore } from "../../agents/stores/sub-chat-store"
 import { AgentsContent } from "../../agents/ui/agents-content"
 import { selectedAgentChatIdAtom } from "../../agents/atoms"
+import { appStore } from "../../../lib/jotai-store"
 import type { ChatPanelEntity } from "../atoms"
 
 /**
@@ -44,7 +44,6 @@ export function ChatPanel({
   const [isActive, setIsActive] = useState(api.isActive)
   const setActiveSubChat = useAgentSubChatStore((s) => s.setActiveSubChat)
   const allSubChats = useAgentSubChatStore((s) => s.allSubChats)
-  const selectedWorkspaceId = useAtomValue(selectedAgentChatIdAtom)
 
   // `isVisible` (per-group) drives whether to mount AgentsContent.
   useEffect(() => {
@@ -70,17 +69,20 @@ export function ChatPanel({
   // dockview has its own focused panel. Without the workspace gate,
   // they'd race to write the global `activeSubChatId`. Only the
   // currently-selected workspace's chat panels should claim focus.
+  //
+  // The workspace check reads `selectedAgentChatIdAtom` via
+  // `appStore.get` instead of `useAtomValue` — subscribing would make
+  // ChatPanel re-render on every workspace switch and ripple through
+  // the entire AgentsContent → ChatView subtree, which (in dev) tripped
+  // an infinite render loop in Radix's composeRefs in dock-header
+  // dropdown buttons. Reading at fire-time keeps the gate honest
+  // without the subscription cost.
   useEffect(() => {
     if (!isActive) return
+    const selectedWorkspaceId = appStore.get(selectedAgentChatIdAtom)
     if (params.chatId !== selectedWorkspaceId) return
     setActiveSubChat(params.subChatId)
-  }, [
-    isActive,
-    params.chatId,
-    params.subChatId,
-    selectedWorkspaceId,
-    setActiveSubChat,
-  ])
+  }, [isActive, params.chatId, params.subChatId, setActiveSubChat])
 
   // Keep the dockview tab title in sync with the sub-chat's display name.
   // The store's allSubChats array is the source of truth for names.
